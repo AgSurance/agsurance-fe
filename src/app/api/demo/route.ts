@@ -72,6 +72,9 @@ async function finishStep(accounts: DemoAccounts, pending: PendingStep) {
 }
 
 export async function GET(request: Request) {
+  if (process.env.VERCEL === "1") {
+    return Response.json({ error: "The live demo is only available from the local console." }, { status: 403 });
+  }
   const accounts = config();
   if (!accounts) return Response.json({ error: "Testnet demo accounts are not configured." }, { status: 503 });
   try {
@@ -141,7 +144,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const host = request.headers.get("host") ?? "";
-  if (!/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host) || request.headers.get("origin") !== `http://${host}`) {
+  if (process.env.VERCEL === "1" || !/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host) || request.headers.get("origin") !== `http://${host}`) {
     return Response.json({ error: "Demo signing is only available from the local console." }, { status: 403 });
   }
   const accounts = config();

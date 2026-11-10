@@ -20,7 +20,13 @@ bun run lint
 bun run build
 ```
 
-The landing page describes the product. `/demo` opens the Agent Console and live coverage dashboard.
+The landing page describes the product. When running locally, `/demo` opens the Agent Console and live coverage dashboard.
+
+## Deploy the public frontend on Vercel
+
+Import `AgSurance/agsurance-fe` with `main` as the production branch. Choose the Next.js preset, leave the root at the repository root, and use `bun install --frozen-lockfile` and `bun run build` if setting the commands manually.
+
+Production and Preview need no custom environment variables. Under Environment Variables, keep **Enable access to System Environment Variables** checked so the app can detect `VERCEL=1`. On Vercel, `/demo` links to the public claim replay and `/api/demo` returns 403. Keep `AGSURANCE_DEMO_ACCOUNTS`, `.env.local`, agent signing keys, and the transaction journal on your local machine. Use the setup below to run the live console.
 
 ## Run the testnet demo
 
