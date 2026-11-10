@@ -14,7 +14,25 @@ bun run lint
 bun run build
 ```
 
-The landing page describes the proposed account and shows an illustrative claim. It does not connect to a wallet or submit transactions.
+The landing page describes the product. `/demo` opens the Agent Console and live coverage dashboard.
+
+## Run the testnet demo
+
+Build the two Rust contracts in `agsurance-sc`, then from this repo:
+
+```sh
+bun install --frozen-lockfile
+bun scripts/setup-testnet.ts ../agsurance-sc/target/wasm32-unknown-unknown/release
+bun run dev --hostname 127.0.0.1
+```
+
+Open `http://127.0.0.1:3000/demo`. The setup script creates funded testnet accounts and writes their demo signing configuration to the ignored `.env.local` file. Keep this file local. The signing route is for the loopback demo only. Setup can resume with the same file after a partial failure.
+
+1. Buy a demo policy as the owner. The vault locks 0.4 testnet NEAR of capacity against a 0.01 NEAR premium.
+2. Simulate a 0.3 NEAR loss from the wallet fixture and submit the claim as the scripted runner.
+3. Record two reviewer approvals and pay the claim. A 0.05 NEAR deductible leaves a 0.25 NEAR payout to the fixed recovery account.
+
+The wallet fixture makes a real testnet transfer and records the incident only after that transfer succeeds. The claims vault checks the record and only marks reimbursement complete after its own transfer succeeds. Reviewer buttons use distinct test accounts in the same local presenter session. Explorer links point to the actual transactions. The current policy lives on-chain and the console's transaction trail is kept in the browser.
 
 The process cards adapt [React Bits SpotlightCard](https://github.com/DavidHDev/react-bits/blob/c83b5e7e026f003af33ff9ebc3d93afb5c86ad22/src/ts-tailwind/Components/SpotlightCard/SpotlightCard.tsx). See [the upstream license](licenses/react-bits.md).
 

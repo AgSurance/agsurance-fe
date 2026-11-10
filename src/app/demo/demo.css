@@ -1,0 +1,26 @@
+.demo-page { min-height: 100vh; padding: 24px var(--gutter) 70px; background: var(--color-deep-blue); color: white; }
+.demo-header, .demo-status, .demo-policy { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+.demo-header a { font-weight: 600; font-size: 1.125rem; }
+.demo-header span, .demo-intro .eyebrow { color: var(--color-bubblegum); }
+.demo-intro { margin: 44px 0 28px; }
+.demo-intro h1 { font-size: clamp(3rem, 7vw, 6rem); }
+.demo-status { margin-bottom: 12px; }
+.demo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.demo-panel { min-width: 0; padding: clamp(16px, 3vw, 32px); background: white; color: var(--ink); }
+.demo-panel h2 { font-size: clamp(2.3rem, 4vw, 4rem); margin: 6px 0 12px; }
+.demo-panel h3 { margin: 24px 0 10px; font-size: 1.75rem; }
+.demo-description { margin: 8px 0; color: var(--muted); }
+.demo-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.demo-page button { border: 1px solid var(--color-deep-blue); background: var(--color-bubblegum); color: var(--color-deep-blue); padding: 7px 11px; cursor: pointer; font-weight: 600; }
+.demo-page button:disabled { cursor: default; opacity: .52; background: white; }
+.demo-policy { padding: 8px 12px; background: var(--color-deep-blue); color: white; }
+.demo-amounts { margin: 8px 0 12px; }
+.demo-amounts div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--dark-line); padding: 5px 8px; }
+.demo-amounts dd { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.demo-amounts .demo-reimbursed { background: var(--color-bubblegum); color: var(--color-deep-blue); font-weight: 600; }
+.demo-trail { display: grid; gap: 8px; max-height: 320px; overflow: auto; }
+.demo-trail li { display: grid; gap: 2px; padding: 8px 10px; background: #f7f9ff; }
+.demo-trail a { text-decoration: underline; width: fit-content; color: var(--color-deep-blue); }
+.demo-id { font: .74rem/1.5 ui-monospace, monospace; overflow-wrap: anywhere; color: var(--muted); }
+.demo-error { background: white; color: var(--ink); padding: 10px; margin-bottom: 12px; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .demo-grid { grid-template-columns: 1fr; } }

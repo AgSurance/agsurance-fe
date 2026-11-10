@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { SpotlightCard } from "./spotlight-card";
 
 function Arrow() {
@@ -52,7 +53,7 @@ export default function Home() {
           <a href="#how-it-works">How it works</a>
           <a href="#coverage">Coverage</a>
         </nav>
-        <a className="header-link" href="#claim">Example claim <Arrow /></a>
+        <Link className="header-link" href="/demo">Open testnet demo <Arrow /></Link>
       </header>
       <main id="main-content">
         <section className="hero" aria-labelledby="hero-title">
