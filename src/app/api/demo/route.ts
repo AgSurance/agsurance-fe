@@ -1,27 +1,34 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { cookies } from "next/headers";
 import { PublicKey } from "@near-js/crypto";
 import { call, PendingTransactionError, readDashboard, reconcileTransaction, rpc, transact, TransactionFailedError, transferReceipt, view, type DemoAccounts, type SignedReference } from "../../../lib/demo-near";
 import { verifyLossEvidence } from "../../../lib/claim-evidence";
 import { checkoutTotal, evidenceIsCovered, projectStatus, type Activity, type Dashboard, type Mandate, type Step } from "../../../lib/demo-state";
 import { clearPending, readPending, recordPending } from "../../../lib/pending-transaction";
+import { demoCookie, hostedDemoOrigin, hostedJournal, hostedSteps, inviteAccounts } from "../../../lib/hosted-demo";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 let busy = false;
 
-function config(): DemoAccounts | null {
+async function config() {
+  if (process.env.VERCEL === "1") return inviteAccounts((await cookies()).get(demoCookie)?.value);
+
   const raw = process.env.AGSURANCE_DEMO_ACCOUNTS;
   return raw ? JSON.parse(raw) as DemoAccounts : null;
 }
 
 const proofDirectory = join(process.cwd(), ".agsurance-demo");
 const pendingFile = (vault: string) => join(proofDirectory, `${vault}-pending.json`);
+type ProofKind = "pay" | "recover" | "loss";
 type PendingStep = SignedReference & { step: Step; label: string; policyId?: number; sender?: string; recipient?: string };
-const proofFile = (vault: string, policyId: number, kind: "pay" | "recover") =>
-  join(proofDirectory, `${vault}-${policyId}${kind === "recover" ? "-recovery" : ""}.json`);
+const proofFile = (vault: string, policyId: number, kind: ProofKind) =>
+  join(proofDirectory, `${vault}-${policyId}${kind === "pay" ? "" : kind === "recover" ? "-recovery" : "-loss"}.json`);
 
-async function readProof(vault: string, policyId: number, kind: "pay" | "recover") {
+async function readProof(vault: string, policyId: number, kind: ProofKind) {
+  if (process.env.VERCEL === "1") return (await hostedJournal(vault).read<Activity>(`proof:${policyId}:${kind}`)) ?? undefined;
   try {
     return JSON.parse(await readFile(proofFile(vault, policyId, kind), "utf8")) as Activity;
   } catch (error) {
@@ -29,25 +36,48 @@ async function readProof(vault: string, policyId: number, kind: "pay" | "recover
   }
 }
 
+function readDemoPending(vault: string) {
+  return process.env.VERCEL === "1" ? hostedJournal(vault).read<PendingStep>("pending")
+    : readPending<PendingStep>(pendingFile(vault));
+}
+
+function saveDemoPending(vault: string, reference: PendingStep) {
+  return process.env.VERCEL === "1" ? hostedJournal(vault).save("pending", reference)
+    : recordPending(pendingFile(vault), reference);
+}
+
+function clearDemoPending(vault: string, reference: PendingStep) {
+  return process.env.VERCEL === "1" ? hostedJournal(vault).remove("pending")
+    : clearPending(pendingFile(vault), reference);
+}
+
 async function snapshot(accounts: DemoAccounts) {
   const [dashboard, pending] = await Promise.all([
-    readDashboard(accounts.vault, accounts.wallet), readPending<PendingStep>(pendingFile(accounts.vault)),
+    readDashboard(accounts.vault, accounts.wallet), readDemoPending(accounts.vault),
   ]);
   const policy = dashboard.policy;
-  const [payoutProof, recoveryProof] = await Promise.all([
+  const hosted = process.env.VERCEL === "1";
+  const [payoutProof, recoveryProof, lossProof] = await Promise.all([
     policy?.phase === "Paid" ? readProof(accounts.vault, policy.id, "pay") : undefined,
     policy && dashboard.coverage?.retired ? readProof(accounts.vault, policy.id, "recover") : undefined,
+    hosted && policy && dashboard.incident?.policy_id === policy.id ? readProof(accounts.vault, policy.id, "loss") : undefined,
   ]);
+  const status = projectStatus(dashboard, pending && {
+    transactionHash: pending.transactionHash, signerId: pending.signerId,
+  }, hosted);
   return {
     ...dashboard, incident: dashboard.incident ?? null, wallet: accounts.wallet, vault: accounts.vault, runner: accounts.runner.id,
     suggestedSupplier: accounts.supplier,
     demoRecovery: accounts.recovery?.id === dashboard.beneficiary,
-    demoOwner: (dashboard.owner ?? accounts.owner.id) === accounts.owner.id, payoutProof, recoveryProof,
-    status: projectStatus(dashboard, pending && { transactionHash: pending.transactionHash, signerId: pending.signerId }),
+    demoOwner: (dashboard.owner ?? accounts.owner.id) === accounts.owner.id, payoutProof, recoveryProof, lossProof, status,
   };
 }
 
-async function saveProof(vault: string, policyId: number, kind: "pay" | "recover", activity: Activity) {
+async function saveProof(vault: string, policyId: number, kind: ProofKind, activity: Activity) {
+  if (process.env.VERCEL === "1") {
+    await hostedJournal(vault).save(`proof:${policyId}:${kind}`, activity);
+    return;
+  }
   const destination = proofFile(vault, policyId, kind);
   await mkdir(proofDirectory, { recursive: true, mode: 0o700 });
   const temporary = `${destination}.${randomUUID()}.tmp`;
@@ -64,25 +94,28 @@ async function finishStep(accounts: DemoAccounts, pending: PendingStep) {
   const recipient = pending.recipient ?? (step === "loss" ? (await snapshot(accounts)).incident?.recipient : undefined);
   const receipt = sender && recipient ? await transferReceipt(pending, sender, recipient) : undefined;
   const activity = { label, actor: signerId, hash: transactionHash, receipt, policyId, vault: accounts.vault };
-  if ((step === "pay" || step === "recover") && policyId && receipt) await saveProof(accounts.vault, policyId, step, activity);
+  const hosted = process.env.VERCEL === "1";
+  if (hosted && (step === "loss" || step === "pay") && !receipt) throw new Error("The transfer receipt is not available yet.");
+  if ((step === "pay" || step === "recover" || (hosted && step === "loss")) && policyId && receipt) {
+    await saveProof(accounts.vault, policyId, step, activity);
+  }
   const state = await snapshot(accounts);
-  await clearPending(pendingFile(accounts.vault), pending);
+  await clearDemoPending(accounts.vault, pending);
   state.status.pendingTransaction = null;
   return Response.json({ state, activity });
 }
 
 export async function GET(request: Request) {
-  if (process.env.VERCEL === "1") {
-    return Response.json({ error: "The live demo is only available from the local console." }, { status: 403 });
-  }
-  const accounts = config();
-  if (!accounts) return Response.json({ error: "Testnet demo accounts are not configured." }, { status: 503 });
+  const hosted = process.env.VERCEL === "1";
+  const accounts = await config();
+  if (!accounts) return unavailable(hosted);
   try {
     const params = new URL(request.url).searchParams;
     const lossTx = params.get("loss_tx");
     if (lossTx) return Response.json(await verifyLossEvidence(await snapshot(accounts), lossTx));
     const hash = params.get("owner_tx");
     if (hash) {
+      if (hosted) return Response.json({ error: "Use the demo signer for this session." }, { status: 403 });
       const method = params.get("method");
       const recoveryMethod = method != null && ["pause_wallet", "recover_wallet", "refund_unused_premium", "submit_claim"].includes(method);
       if (!method || (!recoveryMethod && !["buy_policy", "connect_agent", "revoke_agent", "retry_checkout_refund"].includes(method))) {
@@ -142,23 +175,39 @@ export async function GET(request: Request) {
   }
 }
 
+function unavailable(hosted: boolean) {
+  return hosted ? Response.json({ error: "A demo invite is required." }, { status: 403 })
+    : Response.json({ error: "Testnet demo accounts are not configured." }, { status: 503 });
+}
+
 export async function POST(request: Request) {
+  const hosted = process.env.VERCEL === "1";
   const host = request.headers.get("host") ?? "";
-  if (process.env.VERCEL === "1" || !/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host) || request.headers.get("origin") !== `http://${host}`) {
-    return Response.json({ error: "Demo signing is only available from the local console." }, { status: 403 });
-  }
-  const accounts = config();
-  if (!accounts) return Response.json({ error: "Testnet demo accounts are not configured." }, { status: 503 });
-  if (busy) return Response.json({ error: "Wait for the pending transaction and refresh the dashboard." }, { status: 409 });
-  busy = true;
-  const file = pendingFile(accounts.vault);
+  const allowedOrigin = hosted ? hostedDemoOrigin(request)
+    : /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host) && request.headers.get("origin") === `http://${host}`;
+  if (!allowedOrigin) return Response.json({ error: "Invalid demo request origin." }, { status: 403 });
+  const accounts = await config();
+  if (!accounts) return unavailable(hosted);
+
+  let release: (() => Promise<void>) | undefined;
   let pending: PendingStep | null = null;
   try {
+    if (hosted) {
+      release = await hostedJournal(accounts.vault).acquire();
+    } else if (!busy) {
+      busy = true;
+      release = async () => { busy = false; };
+    }
+    if (!release) return Response.json({ error: "Wait for the pending transaction and refresh the dashboard." }, { status: 409 });
+
     const { step, publicKey, mandate, lossTx, expectedPolicyId, expectedCheckoutId } = await request.json() as {
       step: Step | "reconcile"; publicKey?: string; mandate?: Mandate; lossTx?: string;
       expectedPolicyId?: number | null; expectedCheckoutId?: number | null;
     };
-    pending = await readPending<PendingStep>(file);
+    if (hosted && !hostedSteps.has(step)) {
+      return Response.json({ error: "This action is unavailable in the hosted demo." }, { status: 403 });
+    }
+    pending = await readDemoPending(accounts.vault);
     if (pending) {
       if (step !== "reconcile") throw new PendingTransactionError(pending);
       await reconcileTransaction(pending);
@@ -182,9 +231,13 @@ export async function POST(request: Request) {
     if (step === "buy" && current.max_supplier_limit && !mandate) {
       return Response.json({ error: "Choose a supplier and spending limit." }, { status: 400 });
     }
+    if (hosted && step === "buy" &&
+        (mandate?.supplier !== accounts.supplier || mandate?.limit !== current.max_supplier_limit)) {
+      return Response.json({ error: "Use the spending rules shown for this testnet demo." }, { status: 400 });
+    }
     const reviewing = step === "review1" || step === "review2" || step === "review3";
     const evidence = reviewing && policy?.mandate
-      ? await verifyLossEvidence(current, lossTx ?? policy.evidence?.transaction_hash ?? "")
+      ? await verifyLossEvidence(current, (hosted ? current.lossProof?.hash : lossTx ?? policy.evidence?.transaction_hash) ?? "")
       : undefined;
     const reject = !!evidence && !evidenceIsCovered(current, evidence);
     const vote = call(reject ? "reject_claim" : "approve_claim", { ...args, evidence });
@@ -209,7 +262,7 @@ export async function POST(request: Request) {
         action: call("submit_claim", args), label: "Recovery account filed claim" },
       loss: { actor: accounts.runner, target: accounts.wallet,
         action: call("simulate_loss", args), label: "Simulated loss confirmed" },
-      submit: { actor: accounts.runner, target: accounts.vault,
+      submit: { actor: hosted ? owner : accounts.runner, target: accounts.vault,
         action: call("submit_claim", args), label: "Claim filed with wallet evidence" },
       review1: { actor: accounts.reviewers[0], target: accounts.vault, action: vote, label: `Reviewer 1 ${voteLabel}` },
       review2: { actor: accounts.reviewers[1], target: accounts.vault, action: vote, label: `Reviewer 2 ${voteLabel}` },
@@ -226,14 +279,14 @@ export async function POST(request: Request) {
     const recipient = ["pay", "recover", "premium-refund"].includes(step) ? current.beneficiary : undefined;
     await transact(command.actor, command.target, [command.action], async reference => {
       const entry = { ...reference, step, label: command.label, policyId: policy?.id, sender, recipient };
-      await recordPending(file, entry);
+      await saveDemoPending(accounts.vault, entry);
       pending = entry;
     });
     if (!pending) throw new Error("Missing transaction reference");
     return await finishStep(accounts, pending);
   } catch (error) {
     if (error instanceof TransactionFailedError && pending) {
-      await clearPending(file, pending);
+      await clearDemoPending(accounts.vault, pending);
       return Response.json({ code: "transaction_failed", error: error.message }, { status: 409 });
     }
     if (pending || error instanceof PendingTransactionError) {
@@ -247,6 +300,6 @@ export async function POST(request: Request) {
     }
     return Response.json({ error: (error as Error).message }, { status: 502 });
   } finally {
-    busy = false;
+    await release?.().catch(() => undefined);
   }
 }

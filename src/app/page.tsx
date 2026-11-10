@@ -58,7 +58,7 @@ export default function Home() {
           <a href="#coverage">Coverage</a>
           <a href="#economics">Economics</a>
         </nav>
-        <Link className="header-link" href="/demo">Live testnet demo <Arrow /></Link>
+        <Link className="header-link" href="/demo">Testnet demo <Arrow /></Link>
       </header>
       <main id="main-content">
         <section className="hero" aria-labelledby="hero-title">
@@ -70,9 +70,9 @@ export default function Home() {
             </p>
             <div className="hero-actions">
               <a className="primary-action" href={replay}>Replay a testnet claim <Arrow /></a>
-              <Link className="text-action" href="/demo">Run the live testnet demo <Arrow /></Link>
+              <Link className="text-action" href="/demo">Open the testnet demo <Arrow /></Link>
             </div>
-            <p className="hero-note">Try the replay without a wallet. To run the live demo, set it up on your computer.</p>
+            <p className="hero-note">Try the replay without a wallet. Use a demo invite to run new testnet transactions online.</p>
           </div>
           <figure className="hero-figure">
             <div className="hero-art">

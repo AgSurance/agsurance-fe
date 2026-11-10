@@ -15,7 +15,7 @@ function near(value: string) {
   return fraction ? `${whole}.${fraction} NEAR` : `${whole} NEAR`;
 }
 
-export function DemoConsole() {
+export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
   const [state, setState] = useState<DemoState>();
   const [history, setHistory] = useState<Activity[]>([]);
   const [pending, setPending] = useState<string>();
@@ -238,8 +238,8 @@ export function DemoConsole() {
   const externalPending = walletPending?.activity.vault === state?.vault ? walletPending : undefined;
   const actionPending = !!pending || !!transactionPending || !!externalPending;
   const supplier = supplierInput ?? state?.suggestedSupplier ?? "";
-  const limit = parseNear(limitInput);
   const maxLimit = state?.max_supplier_limit;
+  const limit = hosted ? maxLimit : parseNear(limitInput);
   const exceedsLimit = !!maxLimit && !!limit && BigInt(limit) > BigInt(maxLimit);
   const limitError = exceedsLimit ? `Enter a spending cap of ${near(maxLimit)} or less.`
     : !limit ? "Enter a valid spending cap in NEAR."
@@ -247,11 +247,12 @@ export function DemoConsole() {
   const visibleLimitError = limitVisited || exceedsLimit ? limitError : undefined;
   const mandate = maxLimit && supplier.endsWith(".testnet") && limit && !limitError
     ? { supplier, limit } : undefined;
+  const visibleHistory = hosted ? history.filter(entry => entry.vault === state?.vault) : history;
   const policyKey = `${state?.vault}/${policy?.id}`;
   const recordedLoss = history.find(entry => entry.label === "Simulated loss confirmed" &&
     entry.policyId === policy?.id && entry.vault === state?.vault);
   const typedLoss = lossInput?.policy === policyKey ? lossInput.hash : undefined;
-  const lossTx = (policy?.evidence?.transaction_hash ?? typedLoss ?? recordedLoss?.hash ?? "").trim();
+  const lossTx = (policy?.evidence?.transaction_hash ?? state?.lossProof?.hash ?? typedLoss ?? recordedLoss?.hash ?? "").trim();
   const evidence = policy?.evidence ?? (checkedEvidence?.policy === policyKey &&
     checkedEvidence.evidence.transaction_hash === lossTx ? checkedEvidence.evidence : undefined);
   const canReview = !policy?.mandate || !!evidence;
@@ -285,7 +286,7 @@ export function DemoConsole() {
   );
 
   const showCheckout = !!state && !checkout && !coverage?.paused && (!policy || status === "Paid" || status === "Closed");
-  const ownerConnection = state?.owner && !ownerWallet && (
+  const ownerConnection = !hosted && state?.owner && !ownerWallet && (
     <button type="button" className={ownerReady ? "demo-secondary" : undefined} disabled={!!pending} onClick={() => void connectWallet("owner")}>Connect owner wallet</button>
   );
   const checkoutForm = showCheckout && state && (
@@ -293,9 +294,9 @@ export function DemoConsole() {
       {state.max_supplier_limit && (
         <div className="demo-mandate">
           <label htmlFor="supplier">Approved supplier account</label>
-          <input id="supplier" value={supplier} onChange={event => setSupplier(event.target.value)} />
+          <input id="supplier" readOnly={hosted} value={supplier} onChange={event => setSupplier(event.target.value)} />
           <label htmlFor="supplier-limit">Supplier spending cap (NEAR)</label>
-          <input id="supplier-limit" inputMode="decimal" value={limitInput}
+          <input id="supplier-limit" readOnly={hosted} inputMode="decimal" value={hosted && maxLimit ? near(maxLimit).split(" ")[0] : limitInput}
             aria-describedby="supplier-limit-help" aria-invalid={visibleLimitError ? true : undefined}
             onChange={event => setLimit(event.target.value)} onBlur={() => setLimitVisited(true)} />
           <small id="supplier-limit-help" className={visibleLimitError ? "demo-field-error" : undefined} aria-live="polite">
@@ -323,15 +324,15 @@ export function DemoConsole() {
   if (ready("refund")) {
     nextAction = <>{!ownerReady && ownerConnection}<button type="button" disabled={actionPending || !ownerReady}
       onClick={() => void walletAction("refund", "Retry checkout refund")}>Retry checkout refund</button></>;
-  } else if (ready("close")) {
+  } else if (!hosted && ready("close")) {
     nextAction = button("close", status === "Closing" ? "Check or retry reserve release" : "Close policy and release reserve", true);
   } else if (ready("pay")) {
     nextAction = button("pay", status === "Paying" ? "Check or retry payout" : "Pay claim", true);
   } else if (!actionPending && !checkout && !showCheckout && status !== "Paid") {
     if (status === "InReview") nextAction = <a href="#claim-review">Go to claim review</a>;
-    else if (ready("connect")) nextAction = <a href="#agent-access">Go to agent setup</a>;
+    else if (!hosted && ready("connect")) nextAction = <a href="#agent-access">Go to agent setup</a>;
     else if (ready("loss") || ready("submit") || ready("agent-claim") || ready("renew")) nextAction = <a href="#agent-console">Go to Agent Console</a>;
-    else if (ready("recover") || ready("recovery-claim") || ready("premium-refund")) nextAction = <a href="#recovery">Go to wallet recovery</a>;
+    else if (!hosted && (ready("recover") || ready("recovery-claim") || ready("premium-refund"))) nextAction = <a href="#recovery">Go to wallet recovery</a>;
   }
 
   return (
@@ -403,8 +404,8 @@ export function DemoConsole() {
           {policy?.mandate && <p className="demo-id">Policy mandate · {policy.mandate.supplier} · {near(policy.mandate.limit)}</p>}
           {!showCheckout && !ready("refund") && ownerConnection && <div className="demo-actions">{ownerConnection}</div>}
           {state?.wallet_funding && <p className="demo-id">Agent wallet · {state.wallet}</p>}
-          {state?.owner && <p className="demo-id">{ownerWallet ? "Connected owner" : state.demoOwner ? "Local demo signer" : "Policy owner"} · {state.owner}</p>}
-          {state?.agent_funding && (
+          {state?.owner && <p className="demo-id">{ownerWallet ? "Connected owner" : state.demoOwner ? hosted ? "Testnet demo owner" : "Local demo signer" : "Policy owner"} · {state.owner}</p>}
+          {!hosted && state?.agent_funding && (
             <section className="demo-agent" aria-labelledby="agent-access">
               <h3 id="agent-access">Agent access</h3>
               {state.agent?.connected ? (
@@ -423,7 +424,7 @@ export function DemoConsole() {
               ) : <p className="demo-description">Activate a policy to connect an agent.</p>}
             </section>
           )}
-          {coverage && policy && (
+          {!hosted && coverage && policy && (
             <section className="demo-agent" aria-labelledby="recovery">
               <h3 id="recovery">Wallet recovery</h3>
               <p className="demo-description">Stop the agent, then move the remaining operating balance to the registered recovery account. An eligible claim can still be filed.</p>
@@ -460,7 +461,7 @@ export function DemoConsole() {
           {policy?.mandate && status === "InReview" && (
             <div className="demo-mandate">
               <label htmlFor="loss-transaction">Simulated loss transaction hash</label>
-              <input id="loss-transaction" value={lossTx} onChange={event => setLossInput({ policy: policyKey, hash: event.target.value })} disabled={!!policy.evidence} />
+              <input id="loss-transaction" value={lossTx} onChange={event => setLossInput({ policy: policyKey, hash: event.target.value })} disabled={hosted || !!policy.evidence} />
               <button type="button" disabled={!!pending || !lossTx || !!policy.evidence} onClick={() => void inspectEvidence()}>Verify loss receipt</button>
             </div>
           )}
@@ -475,7 +476,7 @@ export function DemoConsole() {
             {button("review1", `${rejectEvidence ? "Reject" : "Approve"} as reviewer 1`, canReview)}
             {button("review2", `${rejectEvidence ? "Reject" : "Approve"} as reviewer 2`, canReview)}
             {state?.reserve_pool && button("review3", `${rejectEvidence ? "Reject" : "Approve"} as reviewer 3`, canReview)}
-            {status === "InReview" && reviewDeadline && !policy?.escalated_at
+            {!hosted && status === "InReview" && reviewDeadline && !policy?.escalated_at
               ? button("escalate", "Record escalation", true)
               : null}
           </div>
@@ -487,11 +488,11 @@ export function DemoConsole() {
         <section className="demo-panel" aria-labelledby="agent-console">
           <p className="eyebrow"><span /> RUNNER</p>
           <h2 id="agent-console">Agent Console</h2>
-          <p className="demo-description">The fixture records a test loss. A connected agent submits the claim from its own CLI.</p>
+          <p className="demo-description">{hosted ? "The test runner records a simulated loss. The demo policy owner files the claim." : "The fixture records a test loss. A connected agent submits the claim from its own CLI."}</p>
           {state?.agent_funding && <p className="demo-id">Vault · {state.vault}</p>}
           <div className="demo-actions">
             {button("loss", "Simulate 0.3 NEAR loss", true)}
-            {!state?.owner && button("submit", "Submit claim", true)}
+            {(hosted || !state?.owner) && button("submit", "Submit claim", true)}
           </div>
           {incident && <p className="demo-description">Wallet incident recorded at block {incident.block_height.toLocaleString()}.</p>}
           {state?.agent?.connected && (
@@ -507,9 +508,9 @@ export function DemoConsole() {
       </div>
       <section className="demo-panel demo-history" aria-labelledby="transaction-trail">
         <h2 id="transaction-trail">Transaction trail</h2>
-        {history.length === 0 ? <p className="demo-description">Transactions appear here after confirmation.</p> : (
+        {visibleHistory.length === 0 ? <p className="demo-description">Transactions appear here after confirmation.</p> : (
           <ol className="demo-trail">
-            {history.map(entry => <li key={entry.hash}>
+            {visibleHistory.map(entry => <li key={entry.hash}>
               <strong>{entry.label}</strong><span className="demo-id">{entry.actor}</span>
               <a href={`${explorer}${entry.hash}`} target="_blank" rel="noreferrer">View testnet transaction ↗</a>
               {entry.receipt && <span className="demo-id" title={entry.receipt}>Transfer receipt {entry.receipt}</span>}

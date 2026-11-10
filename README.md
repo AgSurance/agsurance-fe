@@ -26,7 +26,19 @@ The landing page describes the product. When running locally, `/demo` opens the 
 
 Import `AgSurance/agsurance-fe` with `main` as the production branch. Choose the Next.js preset, leave the root at the repository root, and use `bun install --frozen-lockfile` and `bun run build` if setting the commands manually.
 
-Production and Preview need no custom environment variables. Under Environment Variables, keep **Enable access to System Environment Variables** checked so the app can detect `VERCEL=1`. On Vercel, `/demo` links to the public claim replay and `/api/demo` returns 403. Keep `AGSURANCE_DEMO_ACCOUNTS`, `.env.local`, agent signing keys, and the transaction journal on your local machine. Use the setup below to run the live console.
+Keep **Enable access to System Environment Variables** checked so the app can detect `VERCEL=1`. The public claim replay is available by default.
+
+To enable the live demo, connect Upstash Redis to the production project. The app accepts `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`, or `KV_REST_API_URL` and `KV_REST_API_TOKEN`. Redis stores pending signed transactions and final receipts so a browser refresh or a new function instance can resume a run.
+
+Use the setup below in a separate directory for each invite. Generate a fresh configuration with its own funded testnet owner, wallet, vault, reserve, and reviewers. Run this command to write the invite codes and their server configuration to a new private directory.
+
+```sh
+bun scripts/prepare-hosted-demo.ts /path/to/private-invites /path/to/slot-a/.env.local /path/to/slot-b/.env.local
+```
+
+Add `accounts.json` as the sensitive production variable `AGSURANCE_DEMO_INVITES` and redeploy. Give each judge a different code from `invite-codes.txt` and the `/demo` link. Keep both files outside the deployed directory. The code opens the hosted console in the browser. The judge can buy a policy, simulate a loss, file a claim as the demo owner, review the receipt, and pay the claim. The console links to each confirmed transaction on NEAR testnet.
+
+Keep the local operator's `AGSURANCE_DEMO_ACCOUNTS`, signing keys, and transaction journal on the local machine. Use separate testnet signers for the hosted demo.
 
 ## Run the testnet demo
 

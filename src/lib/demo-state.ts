@@ -32,7 +32,7 @@ export type Dashboard = {
   checkout?: { policy_id: number; phase: "Booking" | "Funding" | "Releasing" | "ReleaseAvailable" | "Refunding" | "RefundAvailable" } | null;
   chain_time?: number; wallet?: string;
 };
-export type DemoState = Dashboard & { incident: Incident | null; wallet: string; vault: string; runner: string; suggestedSupplier?: string; demoOwner: boolean; demoRecovery?: boolean; operatingBalance?: string; payoutProof?: Activity; recoveryProof?: Activity; reserveStatus?: ReserveStatus; status?: AppStatus; blockHeight?: number };
+export type DemoState = Dashboard & { incident: Incident | null; wallet: string; vault: string; runner: string; suggestedSupplier?: string; demoOwner: boolean; demoRecovery?: boolean; operatingBalance?: string; payoutProof?: Activity; lossProof?: Activity; recoveryProof?: Activity; reserveStatus?: ReserveStatus; status?: AppStatus; blockHeight?: number };
 export type Step = "buy" | "loss" | "submit" | "review1" | "review2" | "review3" | "pay" | "connect" | "revoke" | "refund" | "pause" | "recover" | "premium-refund" | "recovery-claim" | "escalate" | "close";
 export type Activity = { label: string; actor: string; hash: string; receipt?: string; policyId?: number; vault?: string };
 export type TransactionReference = { transactionHash: string; signerId: string };
@@ -49,7 +49,11 @@ export type AppStatus = {
   pendingTransaction: TransactionReference | null;
 };
 
-export function projectStatus(state: StatusInput, pendingTransaction: TransactionReference | null = null): AppStatus {
+export function projectStatus(
+  state: StatusInput,
+  pendingTransaction: TransactionReference | null = null,
+  allowOwnerClaim = false,
+): AppStatus {
   const { policy, coverage, checkout, agent, reserveStatus, incident } = state;
   const phase = policy?.phase ?? null;
   const active = phase === "Active";
@@ -83,7 +87,7 @@ export function projectStatus(state: StatusInput, pendingTransaction: Transactio
       "premium-refund": coverage?.unused_premium ? "available" : "policy_state",
       "recovery-claim": coverage?.paused ? claim : "policy_state",
       loss: !active || hasLoss ? "policy_state" : coverage?.paused ? "wallet_paused" : coverage && !coverage.active ? "coverage_inactive" : "available",
-      submit: !state.owner ? claim : "policy_state",
+      submit: !state.owner || allowOwnerClaim ? claim : "policy_state",
       review1: review(1), review2: review(2), review3: review(4),
       escalate: phase !== "InReview" || !policy?.review_deadline || policy.escalated_at ? "policy_state"
         : chainTime < policy.review_deadline ? "review_deadline_open" : "available",
