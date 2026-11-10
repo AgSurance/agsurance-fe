@@ -63,6 +63,10 @@ h3 { font-size: clamp(1.5rem, 3vw, 2.15rem); }
 .controls[hidden] { display: none; }
 .reset { border: 0; padding: 8px 0; background: none; color: var(--blue); font: inherit; text-decoration: underline; cursor: pointer; }
 button:disabled { opacity: .5; cursor: default; }
+.evidence { margin-top: clamp(28px, 5vw, 52px); }
+.evidence h3 { color: var(--blue); }
+.evidence ul { display: grid; gap: 8px; padding-left: 20px; }
+.evidence a { text-underline-offset: 4px; }
 .footer { display: flex; flex-wrap: wrap; gap: 10px 18px; padding-block: 14px 25px; border-top: 1px solid var(--line); color: var(--muted); font-size: .84rem; }
 @media (max-width: 750px) {
   .hero-grid, .replay-grid { grid-template-columns: 1fr; }

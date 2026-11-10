@@ -1,27 +1,32 @@
 const stages = [
   {
     title: "Ready to begin",
-    detail: "The wallet owner buys coverage before the agent records an incident.",
-    action: "Buy demo policy",
+    detail: "Two wallet owners buy coverage backed by the same reserve.",
+    action: "Activate demo coverage",
   },
   {
-    title: "Policy active",
-    detail: "The owner pays a 0.01 NEAR premium and the vault reserves up to 0.40 NEAR for the policy.",
+    title: "Two policies active",
+    detail: "The shared reserve locks 0.40 NEAR per policy. Only 0.20 NEAR is free, so the third checkout is refunded in full.",
     action: "Record simulated loss",
   },
   {
     title: "0.30 NEAR loss recorded",
-    detail: "The runner records a simulated loss. The on-chain demo used a testnet transfer to create the evidence.",
-    action: "Submit and review claim",
+    detail: "A testnet transfer creates a receipt the panel can check against the wallet's spending mandate.",
+    action: "Review the claim",
   },
   {
-    title: "Claim approved",
-    detail: "The runner submits the wallet record. Two of three reviewers approve 0.25 NEAR after applying the 0.05 NEAR deductible.",
-    action: "Release demo payout",
+    title: "Claim approved · payout on hold",
+    detail: "Two reviewers approve 0.25 NEAR after the deductible. The test scenario simulates a 0.40 NEAR reserve shortfall, so the claim remains approved and its allocation stays locked.",
+    action: "Restore the reserve",
+  },
+  {
+    title: "Reserve fully backed",
+    detail: "A 0.40 NEAR testnet top-up backs both policies again. The approved claim is ready to pay.",
+    action: "Replay reimbursement",
   },
   {
     title: "0.25 NEAR reimbursed",
-    detail: "The claim replay is complete. In the recorded testnet transaction, the vault paid the recovery account and its balance rose from 0.03 to 0.28 NEAR.",
+    detail: "In the recorded testnet transaction, the shared reserve sent 0.25 NEAR to this policy's recovery account. The second policy received its own 0.25 NEAR payout after a retry.",
     action: "Replay complete",
   },
 ];
