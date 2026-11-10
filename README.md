@@ -1,5 +1,11 @@
 # AgSurance frontend
 
+AgSurance is a NEAR testnet transaction account with insurance for AI agents. An owner funds the wallet and sets its spending mandate. A review panel checks the receipt for a simulated loss, then a shared reserve pays the registered recovery account.
+
+[Try the public claim replay](https://agsurance.github.io/agsurance-fe/) · [Rust contracts](https://github.com/AgSurance/agsurance-sc) · [Verify a 0.25 NEAR testnet payout](https://testnet.nearblocks.io/txns/6EUqDWKJxeoTz8MXnWiCpS8cGGyuguvrhHuLmFqtPtDq/receipts)
+
+The public replay runs in the browser and links to real NEAR testnet receipts. The local dashboard and CLI can sign testnet transactions.
+
 Next.js App Router, TypeScript, and Tailwind CSS.
 
 ```sh
@@ -18,9 +24,15 @@ The landing page describes the product. `/demo` opens the Agent Console and live
 
 ## Run the testnet demo
 
-Build the three Rust contracts in `agsurance-sc`, then from this repo:
+Clone both repos side by side in a fresh directory with Bun and the Rust toolchain installed.
 
 ```sh
+git clone https://github.com/AgSurance/agsurance-sc.git
+git clone https://github.com/AgSurance/agsurance-fe.git
+cd agsurance-sc
+rustup target add wasm32-unknown-unknown
+cargo build --locked --release --target wasm32-unknown-unknown
+cd ../agsurance-fe
 bun install --frozen-lockfile
 bun scripts/setup-testnet.ts ../agsurance-sc/target/wasm32-unknown-unknown/release
 bun run dev --hostname 127.0.0.1
