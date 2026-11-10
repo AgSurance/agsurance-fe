@@ -29,20 +29,20 @@ function Brand() {
 const features = [
   {
     number: "01",
-    title: "Set the mandate",
-    description: "Fund a dedicated account and activate coverage in the same setup. Choose who your agent can pay and how much it can spend.",
+    title: "Set spending rules",
+    description: "Add funds to the agent account and buy coverage. Choose who your agent can pay and how much it can spend.",
     icon: "M5 8h22M5 16h22M5 24h22M12 5v6m8 2v6m-9 2v6",
   },
   {
     number: "02",
     title: "Let the agent pay",
-    description: "Your agent can pay approved recipients and renew coverage using its account balance.",
+    description: "Your agent can pay the people and services you approve. It can also pay to renew coverage from the same account.",
     icon: "M5 16h20m-7-7 7 7-7 7M7 9h6m-6 14h6",
   },
   {
     number: "03",
     title: "File a claim",
-    description: "If a wallet exploit causes an eligible loss, reviewers compare the final NEAR receipt with your original mandate.",
+    description: "If a wallet flaw causes a loss, file a claim. Reviewers compare the NEAR transaction receipt with the spending rules in effect at the time.",
     icon: "M16 3 27 8v8c0 5-5 9-11 13C10 25 5 21 5 16V8l11-5Zm-5 12 4 4 7-8",
   },
 ];
@@ -64,16 +64,15 @@ export default function Home() {
         <section className="hero" aria-labelledby="hero-title">
           <div className="hero-content">
             <p className="eyebrow"><span /> AGENT ACCOUNTS ON NEAR</p>
-            <h1 id="hero-title">Set the limits.<br />Let your agent <em>pay.</em></h1>
+            <h1 id="hero-title">Insurance for<br />AI agents on <em>NEAR.</em></h1>
             <p className="hero-caption">
-              Give your AI agent a NEAR account with spending limits and coverage for
-              eligible losses if those limits are bypassed.
+              Give your agent an account with spending rules you set. If a wallet flaw lets funds leave against those rules, you can file a claim.
             </p>
             <div className="hero-actions">
               <a className="primary-action" href={replay}>Replay a testnet claim <Arrow /></a>
               <Link className="text-action" href="/demo">Run the live testnet demo <Arrow /></Link>
             </div>
-            <p className="hero-note">The replay needs no wallet. The live demo requires local setup.</p>
+            <p className="hero-note">Try the replay without a wallet. To run the live demo, set it up on your computer.</p>
           </div>
           <figure className="hero-figure">
             <div className="hero-art">
@@ -88,7 +87,7 @@ export default function Home() {
             </div>
             <figcaption>
               <span><i /> 01 / Agent account</span>
-              <span><i /> 02 / Separate claim reserve</span>
+              <span><i /> 02 / Funds set aside for claims</span>
             </figcaption>
           </figure>
         </section>
@@ -96,7 +95,7 @@ export default function Home() {
         <section className="section" id="how-it-works" aria-labelledby="flow-title">
           <div className="section-heading">
             <p className="eyebrow"><span /> HOW IT WORKS</p>
-            <h2 id="flow-title">From funding<br /><span>to filing a claim.</span></h2>
+            <h2 id="flow-title">Fund an account.<br /><span>See how claims work.</span></h2>
           </div>
           <div className="features">
             {features.map(({ number, title, description, icon }) => (
@@ -117,25 +116,25 @@ export default function Home() {
         <section className="section coverage" id="coverage" aria-labelledby="coverage-title">
           <div>
             <p className="eyebrow"><span /> COVERAGE</p>
-            <h2 id="coverage-title">When a wallet<br />exploit causes loss.</h2>
-            <p className="coverage-copy">The proposed cover applies when an execution flaw lets funds leave an active account against its recorded spending rules and causes a direct loss.</p>
-            <p className="coverage-copy">Reviewers assess the evidence. Approved claims draw from funds reserved for the policy.</p>
+            <h2 id="coverage-title">When a wallet flaw<br />causes a loss.</h2>
+            <p className="coverage-copy">The proposed policy covers direct losses if a wallet flaw lets funds leave against the recorded spending rules while coverage is active.</p>
+            <p className="coverage-copy">The reserve holds money for claims. Reviewers examine the evidence. If they approve the claim, the reserve pays it.</p>
           </div>
 
           <article className="claim" id="claim" aria-labelledby="claim-title">
             <div className="claim-heading">
               <p className="eyebrow"><span /> NEAR TESTNET CLAIM</p>
-              <h3 id="claim-title">A transfer outside the mandate</h3>
+              <h3 id="claim-title">A transfer broke the spending rules</h3>
             </div>
             <dl className="claim-amounts">
               <div><dt>Simulated loss</dt><dd>0.30 NEAR</dd></div>
-              <div><dt>Deductible</dt><dd>−0.05 NEAR</dd></div>
+              <div><dt>Deductible (your share of the loss)</dt><dd>−0.05 NEAR</dd></div>
               <div className="claim-total"><dt>Paid to recovery account</dt><dd>0.25 NEAR</dd></div>
             </dl>
-            <a className="claim-receipt" href={payoutReceipt}>Verify the testnet payout <Arrow /></a>
+            <a className="claim-receipt" href={payoutReceipt}>View the payout on NEAR testnet <Arrow /></a>
             <details>
-              <summary>What did reviewers verify?</summary>
-              <p>The final NEAR transfer receipt, the spending rules in force at the time, and the coverage window.</p>
+              <summary>What did reviewers look at?</summary>
+              <p>Reviewers checked the final NEAR transfer receipt and the spending rules in effect at the time. They also checked whether coverage was active.</p>
             </details>
           </article>
         </section>

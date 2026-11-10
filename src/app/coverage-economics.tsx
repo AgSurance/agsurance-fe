@@ -30,13 +30,13 @@ export function CoverageEconomics() {
     <section className={`section ${styles.section}`} id="economics" aria-labelledby="economics-title">
       <header className={styles.heading}>
         <p className="eyebrow"><span /> COVERAGE ECONOMICS / DRAFT</p>
-        <h2 id="economics-title">Follow the NEAR.</h2>
-        <p>See where premiums go, what backs a claim, and how payouts affect the people who fund the reserve.</p>
+        <h2 id="economics-title">Where the money goes</h2>
+        <p>A premium is what you pay for coverage. Capital providers put money into the reserve. See how premiums and payouts affect what they earn.</p>
       </header>
 
       <div className={styles.controls}>
         <fieldset>
-          <legend>Approved claims across two policies</legend>
+          <legend>Claims paid across two policies</legend>
           <div className={styles.options}>
             {[0, 1, 2].map((count) => (
               <label key={count}>
@@ -71,8 +71,8 @@ export function CoverageEconomics() {
           </article>
 
           <article className={styles.panel}>
-            <p className="eyebrow">02 / BEFORE ANY CLAIMS ARE PAID</p>
-            <h3>How the reserve is allocated</h3>
+            <p className="eyebrow">02 / BEFORE PAYOUTS</p>
+            <h3>How we divide the reserve</h3>
             <p className={styles.total}>{reserve} NEAR</p>
             <div className={styles.bar} aria-hidden="true">
               <span className={styles.blue} style={{ flex: locked }} />
@@ -80,9 +80,9 @@ export function CoverageEconomics() {
               <span className={styles.light} style={{ flex: surplus }} />
             </div>
             <dl className={styles.rows}>
-              <div><dt><i className={styles.blue} />Locked for {policies} policies</dt><dd>{locked} NEAR</dd></div>
-              <div><dt><i className={styles.pink} />Liquid buffer</dt><dd>{buffer} NEAR</dd></div>
-              <div><dt><i className={styles.light} />Surplus eligible for NEAR staking</dt><dd>{surplus} NEAR</dd></div>
+              <div><dt><i className={styles.blue} />Set aside for {policies} policies</dt><dd>{locked} NEAR</dd></div>
+              <div><dt><i className={styles.pink} />Extra funds kept available</dt><dd>{buffer} NEAR</dd></div>
+              <div><dt><i className={styles.light} />Funds available for NEAR staking</dt><dd>{surplus} NEAR</dd></div>
             </dl>
           </article>
         </div>
@@ -91,24 +91,24 @@ export function CoverageEconomics() {
           <article className={styles.outcome}>
             <p className="eyebrow">POLICYHOLDER</p>
             <h3>{payout} NEAR</h3>
-            <p>Paid per approved claim in this scenario. A {loss} NEAR covered loss with no recovery, less a {deductible} NEAR deductible.</p>
-            <p>Fund the agent with 50 NEAR. Pay {near(premium)} over 28 days for up to {limit} NEAR in payouts. After cashback, the premium costs {near(premium - rebate)}.</p>
+            <p>You lose {loss} NEAR in a covered incident and get none of it back before the payout. You bear the first {deductible} NEAR. The reserve pays the rest.</p>
+            <p>In this example, you add 50 NEAR to the agent account. Coverage costs {near(premium)} for 28 days and pays up to {limit} NEAR. After cashback, coverage costs {near(premium - rebate)}.</p>
           </article>
           <article className={`${styles.outcome} ${styles.capital}`}>
             <p className="eyebrow">CAPITAL PROVIDERS</p>
             <h3>{near(capitalResult)}</h3>
-            <p>From both policies, {near(policies * capitalShare)} in premium share less {near(paid * 100)} in claims. The reserve holds {reserve - paid} NEAR after payouts, before premium income.</p>
-            {claims > 0 && <p><strong>{breakEvenPolicies - claims} claim-free policies</strong> needed in total to cover these payouts, counted across policy periods.</p>}
+            <p>Capital providers receive {near(policies * capitalShare)} from both premiums and pay {near(paid * 100)} in claims. The reserve holds {reserve - paid} NEAR after payouts, before adding any premium income.</p>
+            {claims > 0 && <p>Capital providers need <strong>{breakEvenPolicies - claims} policies with no claims</strong> to break even on these payouts. That total can span several 28-day periods.</p>}
           </article>
           <article className={styles.outcome}>
             <p className="eyebrow">AGSURANCE OPERATOR</p>
             <h3>{near(policies * operatorShare)}</h3>
-            <p>Gross revenue from both policies, before the cost of claim reviews, monitoring, and support.</p>
+            <p>AgSurance receives this amount from both policies before it pays for reviews, monitoring, and support.</p>
           </article>
         </div>
       </div>
 
-      <p className={styles.note}>Illustrative 28-day scenario. Both policies are fully paid. With cashback enabled, both complete the term and qualify even if a claim is paid. Staking rewards and expenses are excluded from the capital result.</p>
+      <p className={styles.note}>This example assumes that both policies are paid in full and run for 28 days. With cashback on, you get 20% of the premium back when the policy ends. You get cashback even if the reserve paid a claim. The result for capital providers excludes staking rewards and expenses.</p>
     </section>
   );
 }
