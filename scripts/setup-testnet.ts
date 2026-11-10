@@ -69,8 +69,8 @@ await createAccount(runner, 100);
 await createAccount(beneficiary, 30);
 await createAccount(recipient, 30);
 for (const reviewer of reviewers) await createAccount(reviewer, 100);
-await createAccount(wallet, 2500, [actions.deployContract(walletCode), call("new", { runner: runner.id, recipient: recipient.id })]);
-await createAccount(vault, 2600, [actions.deployContract(vaultCode), call("new", {
+await createAccount(wallet, 2500, [actions.deployContract(walletCode), call("new", { vault: vault.id, runner: runner.id, recipient: recipient.id })]);
+await createAccount(vault, 3200, [actions.deployContract(vaultCode), call("new", {
   owner: policyOwner, runner: runner.id, wallet: wallet.id, beneficiary: beneficiary.id, reviewers: reviewers.map(r => r.id),
 })]);
 const dashboard = await view<{ reserve: string }>(vault.id, "dashboard");

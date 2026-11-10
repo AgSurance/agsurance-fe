@@ -30,7 +30,7 @@ Open `http://127.0.0.1:3000/demo`. The setup script creates funded testnet accou
 
 To use an external owner wallet, set `AGSURANCE_POLICY_OWNER` to a funded named testnet account before first setup. Connect that wallet through NEAR Connect in the dashboard. With the generated owner account, **Buy demo policy** and **Connect Agent** use the local demo signer.
 
-1. Buy a policy. The vault locks 0.4 testnet NEAR against a 0.01 NEAR premium.
+1. Select **Fund wallet and buy policy**. The owner approves 0.31 testnet NEAR plus network fees in one transaction. The vault forwards 0.30 NEAR to the agent wallet and keeps the 0.01 NEAR premium. The policy activates and 0.40 NEAR stays reserved after funding succeeds. If funding fails, the vault refunds the full attached amount. The dashboard offers a retry if the refund itself fails.
 2. From the agent runtime, run `bun scripts/agent.ts init .agsurance-agent.key`. Paste only the printed public key into **Connect Agent**. The owner funds the agent subaccount with 0.1 testnet NEAR. Keep the key file in the agent runtime.
 3. Record a 0.3 NEAR simulated loss in the dashboard. Then run the following from the agent runtime with the vault ID shown on the page:
 

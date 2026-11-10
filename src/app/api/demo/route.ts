@@ -1,8 +1,8 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PublicKey } from "@near-js/crypto";
-import { call, transact, view, type DemoAccounts } from "../../../lib/demo-near";
-import type { Activity, Dashboard, Incident, Step } from "../../../lib/demo-state";
+import { call, rpc, transact, view, type DemoAccounts } from "../../../lib/demo-near";
+import { checkoutTotal, type Activity, type Dashboard, type Incident, type Step } from "../../../lib/demo-state";
 
 export const runtime = "nodejs";
 let busy = false;
@@ -33,10 +33,47 @@ async function snapshot(accounts: DemoAccounts) {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const accounts = config();
   if (!accounts) return Response.json({ error: "Testnet demo accounts are not configured." }, { status: 503 });
   try {
+    const hash = new URL(request.url).searchParams.get("owner_tx");
+    if (hash) {
+      const method = new URL(request.url).searchParams.get("method");
+      if (!method || !["buy_policy", "connect_agent", "revoke_agent", "retry_checkout_refund"].includes(method)) {
+        return Response.json({ error: "Invalid owner action." }, { status: 400 });
+      }
+      if (!/^[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(hash)) {
+        return Response.json({ error: "Invalid transaction hash." }, { status: 400 });
+      }
+      const owner = accounts.policyOwner ?? accounts.owner.id;
+      const outcome = await rpc<{
+        final_execution_status: string;
+        status: { Failure?: object; SuccessValue?: string };
+        transaction: {
+          signer_id: string; receiver_id: string; hash: string;
+          actions: { FunctionCall?: { method_name: string; args: string } }[];
+        };
+      }>("tx", { tx_hash: hash, sender_account_id: owner, wait_until: "FINAL" });
+      const transaction = outcome.transaction;
+      const action = transaction.actions.length === 1 ? transaction.actions[0].FunctionCall : undefined;
+      if (outcome.final_execution_status !== "FINAL" || transaction.hash !== hash ||
+          transaction.signer_id !== owner || transaction.receiver_id !== accounts.vault || action?.method_name !== method) {
+        return Response.json({ error: "The transaction does not match the requested owner action." }, { status: 409 });
+      }
+      if (method === "connect_agent" || method === "revoke_agent") {
+        const params = new URL(request.url).searchParams;
+        const args = JSON.parse(Buffer.from(action.args, "base64").toString()) as { policy_id: number; public_key?: string };
+        if (String(args.policy_id) !== params.get("policy_id") ||
+            (method === "connect_agent" && args.public_key !== params.get("public_key"))) {
+          return Response.json({ error: "The transaction does not match the requested policy or agent key." }, { status: 409 });
+        }
+      }
+      const value = outcome.status.SuccessValue;
+      if (value === undefined || Buffer.from(value, "base64").toString() === "false") {
+        return Response.json({ error: "The owner transaction did not complete. Check the checkout or refund status." }, { status: 409 });
+      }
+    }
     return Response.json(await snapshot(accounts));
   } catch (error) {
     return Response.json({ error: (error as Error).message }, { status: 502 });
@@ -62,10 +99,12 @@ export async function POST(request: Request) {
     const policy = current.policy;
     const hasLoss = !!policy && current.incident?.policy_id === policy.id;
     const args = { policy_id: policy?.id };
-    const canBuy = current.demoOwner && (!policy || policy.phase === "Paid");
+    const canBuy = current.demoOwner && !current.checkout && (!policy || policy.phase === "Paid");
     const commands = {
       buy: { ready: canBuy, actor: accounts.owner, target: accounts.vault,
-        action: call("buy_policy", {}, BigInt(current.premium)), label: "Policy activated" },
+        action: call("buy_policy", {}, BigInt(checkoutTotal(current))), label: "Policy activated" },
+      refund: { ready: current.demoOwner && current.checkout?.phase === "RefundAvailable", actor: accounts.owner, target: accounts.vault,
+        action: call("retry_checkout_refund", {}), label: "Checkout refunded" },
       connect: { ready: current.demoOwner && !!current.agent_funding && policy?.phase === "Active" && !current.agent,
         actor: accounts.owner, target: accounts.vault,
         action: call("connect_agent", { ...args, public_key: publicKey }, BigInt(current.agent_funding ?? "0")), label: "Agent connected" },

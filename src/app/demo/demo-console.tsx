@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { NearConnector, NearWalletBase } from "@hot-labs/near-connect";
-import { TESTNET_RPC, type Activity, type DemoState, type Step } from "../../lib/demo-state";
+import { checkoutTotal, TESTNET_RPC, type Activity, type DemoState, type Step } from "../../lib/demo-state";
 
 const explorer = "https://testnet.nearblocks.io/txns/";
 const historyKey = "agsurance-testnet-activity";
@@ -70,14 +70,15 @@ export function DemoConsole() {
     finally { setPending(undefined); }
   }
 
-  async function ownerAction(step: "buy" | "connect" | "revoke", label: string) {
+  async function ownerAction(step: "buy" | "connect" | "revoke" | "refund", label: string) {
     if (!state) return;
     if (!ownerWallet) {
       if (state.demoOwner) await run(step, label, step === "connect" ? publicKey.trim() : undefined);
       return;
     }
     const methods = {
-      buy: { methodName: "buy_policy", args: {}, deposit: state.premium },
+      buy: { methodName: "buy_policy", args: {}, deposit: checkoutTotal(state) },
+      refund: { methodName: "retry_checkout_refund", args: {}, deposit: "0" },
       connect: {
         methodName: "connect_agent",
         args: { policy_id: state.policy?.id, public_key: publicKey.trim() },
@@ -97,14 +98,36 @@ export function DemoConsole() {
           throw new Error("The wallet transaction did not complete. Check the transaction in your wallet.");
         }
       }
+      const hash = result?.transaction?.hash;
+      if (typeof hash === "string") {
+        const query = new URLSearchParams({ owner_tx: hash, method: methods[step].methodName });
+        if (state.policy && (step === "connect" || step === "revoke")) query.set("policy_id", String(state.policy.id));
+        if (step === "connect") query.set("public_key", publicKey.trim());
+        const response = await fetch(`/api/demo?${query}`, { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error);
+        setState(data as DemoState);
+        const next = [{ label, actor: state.owner ?? "Owner wallet", hash }, ...history];
+        setHistory(next);
+        try { localStorage.setItem(historyKey, JSON.stringify(next)); } catch { /* Keep the current session visible. */ }
+      } else {
+        await refresh();
+      }
+    } catch (problem) {
       await refresh();
-    } catch (problem) { setError((problem as Error).message); }
-    finally { setPending(undefined); }
+      setError((problem as Error).message);
+    } finally { setPending(undefined); }
   }
 
   const policy = state?.policy;
   const incident = state?.incident?.policy_id === policy?.id ? state?.incident : null;
   const status = policy?.phase ?? "No policy";
+  const checkout = state?.checkout;
+  const checkoutStatus = checkout ? {
+    Funding: "Funding wallet",
+    Refunding: "Refund pending",
+    RefundAvailable: "Refund available",
+  }[checkout.phase] : undefined;
   const ownerReady = !!ownerWallet || !!state?.demoOwner;
   const connectEnabled = !!state?.agent_funding && status === "Active" && !state.agent;
   const keyLooksValid = /^ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(publicKey.trim());
@@ -152,18 +175,28 @@ export function DemoConsole() {
         <section className="demo-panel" aria-labelledby="coverage-dashboard">
           <p className="eyebrow"><span /> COVERAGE</p>
           <h2 id="coverage-dashboard">AgSurance Dashboard</h2>
-          <div className="demo-policy"><strong>{policy ? `Policy #${policy.id}` : "Policy"}</strong><span>{status === "Paid" ? "Reimbursed" : status}</span></div>
+          <div className="demo-policy">
+            <strong>{checkout ? `Checkout #${checkout.policy_id}` : policy ? `Policy #${policy.id}` : "Policy"}</strong>
+            <span>{checkoutStatus ?? (status === "Paid" ? "Reimbursed" : status)}</span>
+          </div>
           <dl className="demo-amounts">
+            {state?.wallet_funding && <div><dt>Agent wallet funding</dt><dd>{near(state.wallet_funding)}</dd></div>}
             <div><dt>Policy premium</dt><dd>{state ? near(state.premium) : "—"}</dd></div>
+            {state?.wallet_funding && <div className="demo-reimbursed"><dt>Checkout total, plus network fees</dt><dd>{near(checkoutTotal(state))}</dd></div>}
             <div><dt>Policy limit</dt><dd>{state ? near(state.limit) : "—"}</dd></div>
             <div><dt>Reserve locked</dt><dd>{state ? near(state.reserved) : "—"}</dd></div>
             <div><dt>Reserve balance</dt><dd>{state ? near(state.reserve) : "—"}</dd></div>
           </dl>
           <div className="demo-actions">
             {state?.owner && !ownerWallet && <button type="button" disabled={!!pending} onClick={() => void connectOwner()}>Connect owner wallet</button>}
-            {state && <button type="button" disabled={!!pending || !ownerReady || (!!policy && policy.phase !== "Paid")}
-              onClick={() => void ownerAction("buy", "Buy policy")}>{ownerWallet ? "Buy policy" : "Buy demo policy"}</button>}
+            {state && <button type="button" disabled={!!pending || !ownerReady || !!checkout || (!!policy && policy.phase !== "Paid")}
+              onClick={() => void ownerAction("buy", state.wallet_funding ? "Fund wallet and buy policy" : "Buy policy")}>
+              {state.wallet_funding ? "Fund wallet and buy policy" : ownerWallet ? "Buy policy" : "Buy demo policy"}
+            </button>}
+            {checkout?.phase === "RefundAvailable" && <button type="button" disabled={!!pending || !ownerReady}
+              onClick={() => void ownerAction("refund", "Retry checkout refund")}>Retry checkout refund</button>}
           </div>
+          {state?.wallet_funding && <p className="demo-id">Agent wallet · {state.wallet}</p>}
           {state?.owner && <p className="demo-id">{ownerWallet ? "Connected owner" : state.demoOwner ? "Local demo signer" : "Policy owner"} · {state.owner}</p>}
           {state?.agent_funding && (
             <section className="demo-agent" aria-labelledby="agent-access">
