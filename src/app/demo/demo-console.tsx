@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { NearConnector, NearWalletBase } from "@hot-labs/near-connect";
-import { CHECKOUT_GAS, checkoutTotal, evidenceIsCovered, parseNear, projectStatus, TESTNET_RPC, type Activity, type DemoState, type Evidence, type Step } from "../../lib/demo-state";
+import { CHECKOUT_GAS, checkoutTotal, evidenceIsCovered, parseNear, projectStatus, TESTNET_RPC, type Activity, type AppStatus, type DemoState, type Evidence, type Step } from "../../lib/demo-state";
 
 const explorer = "https://testnet.nearblocks.io/txns/";
 const historyKey = "agsurance-testnet-activity";
@@ -23,6 +23,7 @@ export function DemoConsole() {
   const [publicKey, setPublicKey] = useState("");
   const [supplierInput, setSupplier] = useState<string>();
   const [limitInput, setLimit] = useState("0.05");
+  const [limitVisited, setLimitVisited] = useState(false);
   const [lossInput, setLossInput] = useState<{ policy: string; hash: string }>();
   const [checkedEvidence, setCheckedEvidence] = useState<{ policy: string; evidence: Evidence }>();
   const [walletConnection, setWalletConnection] = useState<{ wallet: NearWalletBase; role: "owner" | "recovery" }>();
@@ -232,14 +233,19 @@ export function DemoConsole() {
   const incident = state?.incident?.policy_id === policy?.id ? state?.incident : null;
   const status = policy?.phase ?? "No policy";
   const model = state && (state.status ?? projectStatus(state));
-  const ready = (step: Step) => model?.actions[step] === "available";
+  const ready = (action: keyof AppStatus["actions"]) => model?.actions[action] === "available";
   const transactionPending = model?.pendingTransaction;
   const externalPending = walletPending?.activity.vault === state?.vault ? walletPending : undefined;
   const actionPending = !!pending || !!transactionPending || !!externalPending;
   const supplier = supplierInput ?? state?.suggestedSupplier ?? "";
   const limit = parseNear(limitInput);
-  const mandate = state?.max_supplier_limit && supplier.endsWith(".testnet") && limit &&
-    BigInt(limit) > BigInt(0) && BigInt(limit) <= BigInt(state.max_supplier_limit)
+  const maxLimit = state?.max_supplier_limit;
+  const exceedsLimit = !!maxLimit && !!limit && BigInt(limit) > BigInt(maxLimit);
+  const limitError = exceedsLimit ? `Enter a spending cap of ${near(maxLimit)} or less.`
+    : !limit ? "Enter a valid spending cap in NEAR."
+    : limit === "0" ? "Enter a spending cap greater than 0 NEAR." : undefined;
+  const visibleLimitError = limitVisited || exceedsLimit ? limitError : undefined;
+  const mandate = maxLimit && supplier.endsWith(".testnet") && limit && !limitError
     ? { supplier, limit } : undefined;
   const policyKey = `${state?.vault}/${policy?.id}`;
   const recordedLoss = history.find(entry => entry.label === "Simulated loss confirmed" &&
@@ -265,6 +271,7 @@ export function DemoConsole() {
   const reviewDeadline = policy?.review_deadline;
   const coverage = state?.coverage;
   const policyStatus = status === "Paid" ? "Reimbursed" : status === "CheckingEvidence" ? "Checking claim evidence"
+    : status === "InReview" ? "In review" : status === "Paying" ? "Payout pending"
     : status === "Closing" ? "Releasing reserve" : status === "Rejected" ? "Claim rejected" : status === "Active" && coverage
     ? model?.coverage === "retired" ? "Retired" : model?.coverage === "ended" ? "Coverage ended" : coverage.paused ? "Paused" : coverage.active ? "Active" : "Coverage inactive"
     : status;
@@ -276,6 +283,56 @@ export function DemoConsole() {
   const button = (step: Step, label: string, enabled: boolean) => (
     <button type="button" disabled={actionPending || !enabled || !ready(step)} onClick={() => void run(step, label)}>{label}</button>
   );
+
+  const showCheckout = !!state && !checkout && !coverage?.paused && (!policy || status === "Paid" || status === "Closed");
+  const ownerConnection = state?.owner && !ownerWallet && (
+    <button type="button" className={ownerReady ? "demo-secondary" : undefined} disabled={!!pending} onClick={() => void connectWallet("owner")}>Connect owner wallet</button>
+  );
+  const checkoutForm = showCheckout && state && (
+    <>
+      {state.max_supplier_limit && (
+        <div className="demo-mandate">
+          <label htmlFor="supplier">Approved supplier account</label>
+          <input id="supplier" value={supplier} onChange={event => setSupplier(event.target.value)} />
+          <label htmlFor="supplier-limit">Supplier spending cap (NEAR)</label>
+          <input id="supplier-limit" inputMode="decimal" value={limitInput}
+            aria-describedby="supplier-limit-help" aria-invalid={visibleLimitError ? true : undefined}
+            onChange={event => setLimit(event.target.value)} onBlur={() => setLimitVisited(true)} />
+          <small id="supplier-limit-help" className={visibleLimitError ? "demo-field-error" : undefined} aria-live="polite">
+            {visibleLimitError ?? `Maximum for this demo: ${near(state.max_supplier_limit)}.`}
+          </small>
+        </div>
+      )}
+      <div className="demo-checkout">
+        <div>
+          <strong>{near(checkoutTotal(state))} plus network fees</strong>
+          <p>{state.wallet_funding ? `${near(state.wallet_funding)} wallet funding + ${near(state.premium)} premium` : "Policy premium"}</p>
+        </div>
+        <div className="demo-actions">
+          <button type="button" disabled={actionPending || !ownerReady || !ready("buy") || (!!state.max_supplier_limit && !mandate)}
+            onClick={() => void walletAction("buy", state.wallet_funding ? "Fund wallet and buy policy" : "Buy policy")}>
+            {state.wallet_funding ? "Fund wallet and buy policy" : ownerWallet ? "Buy policy" : "Buy demo policy"}
+          </button>
+          {ownerConnection}
+        </div>
+      </div>
+    </>
+  );
+
+  let nextAction: ReactNode;
+  if (ready("refund")) {
+    nextAction = <>{!ownerReady && ownerConnection}<button type="button" disabled={actionPending || !ownerReady}
+      onClick={() => void walletAction("refund", "Retry checkout refund")}>Retry checkout refund</button></>;
+  } else if (ready("close")) {
+    nextAction = button("close", status === "Closing" ? "Check or retry reserve release" : "Close policy and release reserve", true);
+  } else if (ready("pay")) {
+    nextAction = button("pay", status === "Paying" ? "Check or retry payout" : "Pay claim", true);
+  } else if (!actionPending && !checkout && !showCheckout && status !== "Paid") {
+    if (status === "InReview") nextAction = <a href="#claim-review">Go to claim review</a>;
+    else if (ready("connect")) nextAction = <a href="#agent-access">Go to agent setup</a>;
+    else if (ready("loss") || ready("submit") || ready("agent-claim") || ready("renew")) nextAction = <a href="#agent-console">Go to Agent Console</a>;
+    else if (ready("recover") || ready("recovery-claim") || ready("premium-refund")) nextAction = <a href="#recovery">Go to wallet recovery</a>;
+  }
 
   return (
     <>
@@ -292,44 +349,28 @@ export function DemoConsole() {
         <button type="button" disabled={!!pending} onClick={() => void checkWalletAction()}>Check wallet transaction</button>
       </p>}
       {error && <p role="alert" className="demo-error">{error}</p>}
-      <div className="demo-grid">
-        <section className="demo-panel" aria-labelledby="agent-console">
-          <p className="eyebrow"><span /> RUNNER</p>
-          <h2 id="agent-console">Agent Console</h2>
-          <p className="demo-description">The fixture records a test loss. A connected agent submits the claim from its own CLI.</p>
-          {state?.agent_funding && <p className="demo-id">Vault · {state.vault}</p>}
-          <div className="demo-actions">
-            {button("loss", "Simulate 0.3 NEAR loss", true)}
-            {!state?.owner && button("submit", "Submit claim", true)}
+      <section className="demo-panel demo-overview" aria-labelledby="policy-overview">
+        <div className="demo-policy" aria-live="polite">
+          <h2 id="policy-overview">{checkout ? `Checkout #${checkout.policy_id}` : policy ? `Policy #${policy.id}` : "Policy"}</h2>
+          <span>{checkoutStatus ?? policyStatus}</span>
+        </div>
+        {policy?.phase === "Paid" && !checkout && (
+          <div className="demo-payout-summary">
+            <strong>{near(policy.payout)} reimbursed</strong>
+            {state?.payoutProof && <a className="demo-proof" href={`${explorer}${state.payoutProof.hash}/receipts`} target="_blank" rel="noreferrer">Verify final payout receipt ↗</a>}
           </div>
-          {incident && <p className="demo-description">Wallet incident recorded at block {incident.block_height.toLocaleString()}.</p>}
-          {state?.agent?.connected && (
-            <div className="demo-command">
-              <p>Run these commands from the connected agent runtime.</p>
-              <code>bun scripts/agent.ts status {state.vault}</code>
-              {policy?.mandate && <code>bun scripts/agent.ts pay {state.vault} .agsurance-agent.key {policy.mandate.supplier} {near(policy.mandate.limit).split(" ")[0]}</code>}
-              {coverage && <code>bun scripts/agent.ts renew {state.vault} .agsurance-agent.key</code>}
-              <code>bun scripts/agent.ts submit-claim {state.vault} .agsurance-agent.key</code>
-            </div>
-          )}
-          <h3>Transaction trail</h3>
-          {history.length === 0 ? <p className="demo-description">Transactions appear here after confirmation.</p> : (
-            <ol className="demo-trail">
-              {history.map(entry => <li key={entry.hash}>
-                <strong>{entry.label}</strong><span className="demo-id">{entry.actor}</span>
-                <a href={`${explorer}${entry.hash}`} target="_blank" rel="noreferrer">View testnet transaction ↗</a>
-                {entry.receipt && <span className="demo-id" title={entry.receipt}>Transfer receipt {entry.receipt}</span>}
-              </li>)}
-            </ol>
-          )}
-        </section>
+        )}
+        {reserveDeficit && <p className="demo-error">Reserve shortfall of {near(reserveStatus.shortfall)}. New policies and payouts are paused. Claims can still be filed and reviewed.</p>}
+        {!reserveDeficit && capacityFull && <p className="demo-description">The reserve has no capacity for another policy.</p>}
+        {checkoutForm && (status === "Paid"
+          ? <details className="demo-new-policy"><summary>Buy another policy</summary>{checkoutForm}</details>
+          : checkoutForm)}
+        {nextAction && <div className="demo-actions">{nextAction}</div>}
+      </section>
+      <div className="demo-grid">
         <section className="demo-panel" aria-labelledby="coverage-dashboard">
           <p className="eyebrow"><span /> COVERAGE</p>
           <h2 id="coverage-dashboard">AgSurance Dashboard</h2>
-          <div className="demo-policy">
-            <strong>{checkout ? `Checkout #${checkout.policy_id}` : policy ? `Policy #${policy.id}` : "Policy"}</strong>
-            <span>{checkoutStatus ?? policyStatus}</span>
-          </div>
           {coverage && policy && (
             <div className="demo-agent">
               <h3>Premium and coverage</h3>
@@ -349,9 +390,7 @@ export function DemoConsole() {
             </div>
           )}
           <dl className="demo-amounts">
-            {state?.wallet_funding && <div><dt>Agent wallet funding</dt><dd>{near(state.wallet_funding)}</dd></div>}
-            <div><dt>Policy premium</dt><dd>{state ? near(state.premium) : "—"}</dd></div>
-            {state?.wallet_funding && <div className="demo-reimbursed"><dt>Checkout total, plus network fees</dt><dd>{near(checkoutTotal(state))}</dd></div>}
+            {!showCheckout && <div><dt>Policy premium</dt><dd>{state ? near(state.premium) : "—"}</dd></div>}
             <div><dt>Policy limit</dt><dd>{state ? near(state.limit) : "—"}</dd></div>
             <div><dt>Reserve locked</dt><dd>{state ? near(state.reserved) : "—"}</dd></div>
             <div><dt>Reserve balance</dt><dd>{reserveStatus ? near(reserveStatus.assets) : state?.reserve ? near(state.reserve) : "—"}</dd></div>
@@ -361,28 +400,8 @@ export function DemoConsole() {
               <div><dt>Payouts in progress</dt><dd>{near(reserveStatus.pending)}</dd></div>
             </>}
           </dl>
-          {reserveDeficit && <p className="demo-error">Reserve shortfall of {near(reserveStatus.shortfall)}. New policies and payouts are paused. Claims can still be filed and reviewed.</p>}
-          {!reserveDeficit && capacityFull && <p className="demo-description">The reserve has no capacity for another policy.</p>}
-          {state?.max_supplier_limit && !checkout && (!policy || policy.phase === "Paid" || policy.phase === "Closed") && (
-            <div className="demo-mandate">
-              <label htmlFor="supplier">Approved supplier account</label>
-              <input id="supplier" value={supplier} onChange={event => setSupplier(event.target.value)} />
-              <label htmlFor="supplier-limit">Supplier spending cap (NEAR)</label>
-              <input id="supplier-limit" inputMode="decimal" value={limitInput} onChange={event => setLimit(event.target.value)} />
-              <small>Maximum for this demo: {near(state.max_supplier_limit)}.</small>
-            </div>
-          )}
           {policy?.mandate && <p className="demo-id">Policy mandate · {policy.mandate.supplier} · {near(policy.mandate.limit)}</p>}
-          <div className="demo-actions">
-            {state?.owner && !ownerWallet && <button type="button" disabled={!!pending} onClick={() => void connectWallet("owner")}>Connect owner wallet</button>}
-            {state && <button type="button" disabled={actionPending || !ownerReady || !ready("buy") || (!!state.max_supplier_limit && !mandate)}
-              onClick={() => void walletAction("buy", state.wallet_funding ? "Fund wallet and buy policy" : "Buy policy")}>
-              {state.wallet_funding ? "Fund wallet and buy policy" : ownerWallet ? "Buy policy" : "Buy demo policy"}
-            </button>}
-            {ready("refund") && <button type="button" disabled={actionPending || !ownerReady}
-              onClick={() => void walletAction("refund", "Retry checkout refund")}>Retry checkout refund</button>}
-            {ready("close") && button("close", status === "Closing" ? "Check or retry reserve release" : "Close policy and release reserve", true)}
-          </div>
+          {!showCheckout && !ready("refund") && ownerConnection && <div className="demo-actions">{ownerConnection}</div>}
           {state?.wallet_funding && <p className="demo-id">Agent wallet · {state.wallet}</p>}
           {state?.owner && <p className="demo-id">{ownerWallet ? "Connected owner" : state.demoOwner ? "Local demo signer" : "Policy owner"} · {state.owner}</p>}
           {state?.agent_funding && (
@@ -423,7 +442,7 @@ export function DemoConsole() {
               </div>
             </section>
           )}
-          <h3>Claim review</h3>
+          <h3 id="claim-review">Claim review</h3>
           {policy?.escalated_at && (
             <p className="demo-description">
               Escalation recorded {new Date(policy.escalated_at * 1000).toLocaleString()}.
@@ -459,14 +478,45 @@ export function DemoConsole() {
             {status === "InReview" && reviewDeadline && !policy?.escalated_at
               ? button("escalate", "Record escalation", true)
               : null}
-            {button("pay", status === "Paying" ? "Check or retry payout" : "Pay claim", true)}
           </div>
+          {ready("pay") && <a className="demo-proof" href="#policy-overview">Go to payout ↗</a>}
           {state && <p className="demo-id">Recovery account · {state.beneficiary}</p>}
           {state && policy && !["Active", "CheckingEvidence"].includes(policy.phase) &&
             <p className="demo-id">Claim ID · {state.vault}/{policy.id}</p>}
-          {state?.payoutProof && <a className="demo-proof" href={`${explorer}${state.payoutProof.hash}/receipts`} target="_blank" rel="noreferrer">Verify final payout receipt ↗</a>}
+        </section>
+        <section className="demo-panel" aria-labelledby="agent-console">
+          <p className="eyebrow"><span /> RUNNER</p>
+          <h2 id="agent-console">Agent Console</h2>
+          <p className="demo-description">The fixture records a test loss. A connected agent submits the claim from its own CLI.</p>
+          {state?.agent_funding && <p className="demo-id">Vault · {state.vault}</p>}
+          <div className="demo-actions">
+            {button("loss", "Simulate 0.3 NEAR loss", true)}
+            {!state?.owner && button("submit", "Submit claim", true)}
+          </div>
+          {incident && <p className="demo-description">Wallet incident recorded at block {incident.block_height.toLocaleString()}.</p>}
+          {state?.agent?.connected && (
+            <div className="demo-command">
+              <p>Run these commands from the connected agent runtime.</p>
+              <code>bun scripts/agent.ts status {state.vault}</code>
+              {policy?.mandate && <code>bun scripts/agent.ts pay {state.vault} .agsurance-agent.key {policy.mandate.supplier} {near(policy.mandate.limit).split(" ")[0]}</code>}
+              {coverage && <code>bun scripts/agent.ts renew {state.vault} .agsurance-agent.key</code>}
+              <code>bun scripts/agent.ts submit-claim {state.vault} .agsurance-agent.key</code>
+            </div>
+          )}
         </section>
       </div>
+      <section className="demo-panel demo-history" aria-labelledby="transaction-trail">
+        <h2 id="transaction-trail">Transaction trail</h2>
+        {history.length === 0 ? <p className="demo-description">Transactions appear here after confirmation.</p> : (
+          <ol className="demo-trail">
+            {history.map(entry => <li key={entry.hash}>
+              <strong>{entry.label}</strong><span className="demo-id">{entry.actor}</span>
+              <a href={`${explorer}${entry.hash}`} target="_blank" rel="noreferrer">View testnet transaction ↗</a>
+              {entry.receipt && <span className="demo-id" title={entry.receipt}>Transfer receipt {entry.receipt}</span>}
+            </li>)}
+          </ol>
+        )}
+      </section>
     </>
   );
 }

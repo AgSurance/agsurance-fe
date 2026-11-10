@@ -2,6 +2,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { SpotlightCard } from "./spotlight-card";
 
+const replay = "https://agsurance.github.io/agsurance-fe/";
+const payoutReceipt = "https://testnet.nearblocks.io/txns/6EUqDWKJxeoTz8MXnWiCpS8cGGyuguvrhHuLmFqtPtDq/receipts";
+
 function Arrow() {
   return (
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -53,7 +56,7 @@ export default function Home() {
           <a href="#how-it-works">How it works</a>
           <a href="#coverage">Coverage</a>
         </nav>
-        <Link className="header-link" href="/demo">Open testnet demo <Arrow /></Link>
+        <Link className="header-link" href="/demo">Live testnet demo <Arrow /></Link>
       </header>
       <main id="main-content">
         <section className="hero" aria-labelledby="hero-title">
@@ -65,9 +68,10 @@ export default function Home() {
               eligible losses if those limits are bypassed.
             </p>
             <div className="hero-actions">
-              <a className="primary-action" href="#how-it-works">See how it works <Arrow /></a>
-              <a className="text-action" href="#claim">Inspect an example claim <Arrow /></a>
+              <a className="primary-action" href={replay}>Replay a testnet claim <Arrow /></a>
+              <Link className="text-action" href="/demo">Run the live testnet demo <Arrow /></Link>
             </div>
+            <p className="hero-note">The replay needs no wallet. The live demo requires local setup.</p>
           </div>
           <figure className="hero-figure">
             <div className="hero-art">
@@ -118,18 +122,18 @@ export default function Home() {
 
           <article className="claim" id="claim" aria-labelledby="claim-title">
             <div className="claim-heading">
-              <p className="eyebrow"><span /> ILLUSTRATIVE SCENARIO</p>
+              <p className="eyebrow"><span /> NEAR TESTNET CLAIM</p>
               <h3 id="claim-title">A transfer outside the mandate</h3>
             </div>
             <dl className="claim-amounts">
-              <div><dt>Verified loss</dt><dd>30 NEAR</dd></div>
-              <div><dt>Funds recovered</dt><dd>−5 NEAR</dd></div>
-              <div><dt>Deductible</dt><dd>−5 NEAR</dd></div>
-              <div className="claim-total"><dt>Example payout</dt><dd>20 NEAR</dd></div>
+              <div><dt>Simulated loss</dt><dd>0.30 NEAR</dd></div>
+              <div><dt>Deductible</dt><dd>−0.05 NEAR</dd></div>
+              <div className="claim-total"><dt>Paid to recovery account</dt><dd>0.25 NEAR</dd></div>
             </dl>
+            <a className="claim-receipt" href={payoutReceipt}>Verify the testnet payout <Arrow /></a>
             <details>
-              <summary>What would reviewers verify?</summary>
-              <p>The final NEAR transfer receipt, the spending rules in force at the time, the coverage window, and any funds already recovered.</p>
+              <summary>What did reviewers verify?</summary>
+              <p>The final NEAR transfer receipt, the spending rules in force at the time, and the coverage window.</p>
             </details>
           </article>
         </section>
