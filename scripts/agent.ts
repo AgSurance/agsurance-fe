@@ -14,14 +14,14 @@ async function main() {
     return;
   }
 
-  if (!target?.endsWith(".testnet") || !["status", "submit-claim", "pay"].includes(command)) {
-    throw new Error("Usage: agent.ts init KEY_FILE | status VAULT | submit-claim VAULT KEY_FILE | pay VAULT KEY_FILE RECIPIENT AMOUNT_NEAR");
+  if (!target?.endsWith(".testnet") || !["status", "submit-claim", "pay", "renew"].includes(command)) {
+    throw new Error("Usage: agent.ts init KEY_FILE | status VAULT | submit-claim VAULT KEY_FILE | pay VAULT KEY_FILE RECIPIENT AMOUNT_NEAR | renew VAULT KEY_FILE");
   }
   const dashboard = await view<Dashboard>(target, "dashboard");
   if (command === "status") {
     console.log(JSON.stringify({
       network: "testnet", vault: target, policy: dashboard.policy, agent: dashboard.agent,
-      recoveryAccount: dashboard.beneficiary,
+      recoveryAccount: dashboard.beneficiary, coverage: dashboard.coverage,
     }, null, 2));
     return;
   }
@@ -34,6 +34,20 @@ async function main() {
   const key = (await readFile(keyFile, "utf8")).trim();
   const publicKey = KeyPair.fromString(key as `ed25519:${string}`).getPublicKey().toString();
   if (publicKey !== agent.public_key) throw new Error("This key does not match the authorized agent.");
+  if (command === "renew") {
+    const coverage = dashboard.coverage;
+    if (!coverage) throw new Error("This vault does not support renewal.");
+    if (coverage.renewal_pending || coverage.payable_window == null) {
+      console.log(JSON.stringify({ status: coverage.renewal_pending ? "Premium pending" : "No premium due" }));
+      return;
+    }
+    const outcome = await transact({ id: agent.account_id, key }, target, [call("pay_premium", { policy_id: policy.id })]);
+    console.log(JSON.stringify({
+      status: "Premium confirmed", window: coverage.payable_window + 1,
+      transactionHash: outcome.hash, explorerUrl: `${explorer}${outcome.hash}/receipts`,
+    }, null, 2));
+    return;
+  }
   if (command === "pay") {
     const yocto = amount && parseNear(amount);
     if (!policy.mandate) throw new Error("This vault does not support supplier payments.");

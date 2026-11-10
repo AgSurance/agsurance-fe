@@ -2,23 +2,25 @@ import { createHash } from "node:crypto";
 import { KeyPair, PublicKey } from "@near-js/crypto";
 import { actionCreators, createTransaction, Signature, SignedTransaction, type Action } from "@near-js/transactions";
 
-import { TESTNET_RPC } from "./demo-state";
+import { CHECKOUT_GAS, TESTNET_RPC } from "./demo-state";
 
 export const actions = actionCreators;
 const testnetRpc = process.env.AGSURANCE_TESTNET_RPC ?? TESTNET_RPC;
 export const milliNear = BigInt(10) ** BigInt(21);
 export const call = (method: string, args: object, deposit = BigInt(0)) =>
-  actions.functionCall(method, args, BigInt("75000000000000"), deposit);
+  actions.functionCall(method, args, BigInt(method === "buy_policy" ? CHECKOUT_GAS : "75000000000000"), deposit);
 
 export type Actor = { id: string; key: string };
 export type DemoAccounts = {
   owner: Actor;
   policyOwner?: string;
   supplier?: string;
+  recovery?: Actor;
   runner: Actor;
   reviewers: [Actor, Actor, Actor];
   wallet: string;
   vault: string;
+  pool?: string;
 };
 
 export async function rpc<T>(method: string, params: object): Promise<T> {
