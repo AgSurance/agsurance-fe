@@ -14,9 +14,10 @@ const runner = existing?.runner ?? createActor(`agent.${baseId}`);
 const wallet = createActor(`wallet.${baseId}`);
 const vault = createActor(`vault.${baseId}`);
 const beneficiary = createActor(`recovery.${baseId}`);
+const supplier = createActor(`supplier.${baseId}`);
 const recipient = createActor(`incident.${baseId}`);
 const reviewers = existing?.reviewers ?? [1, 2, 3].map(n => createActor(`reviewer${n}.${baseId}`)) as [Actor, Actor, Actor];
-const accounts: DemoAccounts = { owner, policyOwner, runner, reviewers, wallet: wallet.id, vault: vault.id };
+const accounts: DemoAccounts = { owner, policyOwner, supplier: supplier.id, runner, reviewers, wallet: wallet.id, vault: vault.id };
 const wasm = process.argv[2];
 if (!wasm) throw new Error("Pass the smart-contract WASM output directory");
 const [walletCode, vaultCode] = await Promise.all([
@@ -68,6 +69,7 @@ async function createAccount(actor: Actor, balance: number, extra: ReturnType<ty
 await createAccount(runner, 100);
 await createAccount(beneficiary, 30);
 await createAccount(recipient, 30);
+await createAccount(supplier, 30);
 for (const reviewer of reviewers) await createAccount(reviewer, 100);
 await createAccount(wallet, 2500, [actions.deployContract(walletCode), call("new", { vault: vault.id, runner: runner.id, recipient: recipient.id })]);
 await createAccount(vault, 3200, [actions.deployContract(vaultCode), call("new", {

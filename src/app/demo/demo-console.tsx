@@ -2,11 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { NearConnector, NearWalletBase } from "@hot-labs/near-connect";
-import { checkoutTotal, TESTNET_RPC, type Activity, type DemoState, type Step } from "../../lib/demo-state";
+import { checkoutTotal, parseNear, TESTNET_RPC, type Activity, type DemoState, type Evidence, type Step } from "../../lib/demo-state";
 
 const explorer = "https://testnet.nearblocks.io/txns/";
 const historyKey = "agsurance-testnet-activity";
-const near = (value: string) => `${Number(BigInt(value) / (BigInt(10) ** BigInt(21))) / 1000} NEAR`;
+function near(value: string) {
+  const digits = value.padStart(25, "0");
+  const whole = digits.slice(0, -24);
+  const fraction = digits.slice(-24).replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction} NEAR` : `${whole} NEAR`;
+}
 
 export function DemoConsole() {
   const [state, setState] = useState<DemoState>();
@@ -14,6 +19,10 @@ export function DemoConsole() {
   const [pending, setPending] = useState<string>();
   const [error, setError] = useState<string>();
   const [publicKey, setPublicKey] = useState("");
+  const [supplierInput, setSupplier] = useState<string>();
+  const [limitInput, setLimit] = useState("0.05");
+  const [lossInput, setLossInput] = useState<{ policy: string; hash: string }>();
+  const [checkedEvidence, setCheckedEvidence] = useState<{ policy: string; evidence: Evidence }>();
   const [ownerWallet, setOwnerWallet] = useState<NearWalletBase>();
   const connector = useRef<NearConnector | null>(null);
 
@@ -37,7 +46,7 @@ export function DemoConsole() {
     setError(undefined);
     try {
       const response = await fetch("/api/demo", {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ step, publicKey: key }),
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ step, publicKey: key, mandate, lossTx }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
@@ -77,7 +86,7 @@ export function DemoConsole() {
       return;
     }
     const methods = {
-      buy: { methodName: "buy_policy", args: {}, deposit: checkoutTotal(state) },
+      buy: { methodName: "buy_policy", args: mandate ?? {}, deposit: checkoutTotal(state) },
       refund: { methodName: "retry_checkout_refund", args: {}, deposit: "0" },
       connect: {
         methodName: "connect_agent",
@@ -103,6 +112,10 @@ export function DemoConsole() {
         const query = new URLSearchParams({ owner_tx: hash, method: methods[step].methodName });
         if (state.policy && (step === "connect" || step === "revoke")) query.set("policy_id", String(state.policy.id));
         if (step === "connect") query.set("public_key", publicKey.trim());
+        if (step === "buy" && mandate) {
+          query.set("supplier", mandate.supplier);
+          query.set("limit", mandate.limit);
+        }
         const response = await fetch(`/api/demo?${query}`, { cache: "no-store" });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error);
@@ -119,9 +132,34 @@ export function DemoConsole() {
     } finally { setPending(undefined); }
   }
 
+  async function inspectEvidence() {
+    setPending("Verify loss receipt");
+    setError(undefined);
+    try {
+      const response = await fetch(`/api/demo?loss_tx=${encodeURIComponent(lossTx)}`, { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setCheckedEvidence({ policy: policyKey, evidence: data as Evidence });
+    } catch (problem) { setError((problem as Error).message); }
+    finally { setPending(undefined); }
+  }
+
   const policy = state?.policy;
   const incident = state?.incident?.policy_id === policy?.id ? state?.incident : null;
   const status = policy?.phase ?? "No policy";
+  const supplier = supplierInput ?? state?.suggestedSupplier ?? "";
+  const limit = parseNear(limitInput);
+  const mandate = state?.max_supplier_limit && supplier.endsWith(".testnet") && limit &&
+    BigInt(limit) > BigInt(0) && BigInt(limit) <= BigInt(state.max_supplier_limit)
+    ? { supplier, limit } : undefined;
+  const policyKey = `${state?.vault}/${policy?.id}`;
+  const recordedLoss = history.find(entry => entry.label === "Simulated loss confirmed" &&
+    entry.policyId === policy?.id && entry.vault === state?.vault);
+  const typedLoss = lossInput?.policy === policyKey ? lossInput.hash : undefined;
+  const lossTx = (policy?.evidence?.transaction_hash ?? typedLoss ?? recordedLoss?.hash ?? "").trim();
+  const evidence = policy?.evidence ?? (checkedEvidence?.policy === policyKey &&
+    checkedEvidence.evidence.transaction_hash === lossTx ? checkedEvidence.evidence : undefined);
+  const canReview = !policy?.mandate || !!evidence;
   const checkout = state?.checkout;
   const checkoutStatus = checkout ? {
     Funding: "Funding wallet",
@@ -158,6 +196,7 @@ export function DemoConsole() {
             <div className="demo-command">
               <p>Run this from the agent runtime after recording the simulated loss.</p>
               <code>bun scripts/agent.ts status {state.vault}</code>
+              {policy?.mandate && <code>bun scripts/agent.ts pay {state.vault} .agsurance-agent.key {policy.mandate.supplier} {near(policy.mandate.limit).split(" ")[0]}</code>}
               <code>bun scripts/agent.ts submit-claim {state.vault} .agsurance-agent.key</code>
             </div>
           )}
@@ -187,9 +226,19 @@ export function DemoConsole() {
             <div><dt>Reserve locked</dt><dd>{state ? near(state.reserved) : "—"}</dd></div>
             <div><dt>Reserve balance</dt><dd>{state ? near(state.reserve) : "—"}</dd></div>
           </dl>
+          {state?.max_supplier_limit && !checkout && (!policy || policy.phase === "Paid") && (
+            <div className="demo-mandate">
+              <label htmlFor="supplier">Approved supplier account</label>
+              <input id="supplier" value={supplier} onChange={event => setSupplier(event.target.value)} />
+              <label htmlFor="supplier-limit">Supplier spending cap (NEAR)</label>
+              <input id="supplier-limit" inputMode="decimal" value={limitInput} onChange={event => setLimit(event.target.value)} />
+              <small>Maximum for this demo: {near(state.max_supplier_limit)}.</small>
+            </div>
+          )}
+          {policy?.mandate && <p className="demo-id">Policy mandate · {policy.mandate.supplier} · {near(policy.mandate.limit)}</p>}
           <div className="demo-actions">
             {state?.owner && !ownerWallet && <button type="button" disabled={!!pending} onClick={() => void connectOwner()}>Connect owner wallet</button>}
-            {state && <button type="button" disabled={!!pending || !ownerReady || !!checkout || (!!policy && policy.phase !== "Paid")}
+            {state && <button type="button" disabled={!!pending || !ownerReady || !!checkout || (!!state.max_supplier_limit && !mandate) || (!!policy && policy.phase !== "Paid")}
               onClick={() => void ownerAction("buy", state.wallet_funding ? "Fund wallet and buy policy" : "Buy policy")}>
               {state.wallet_funding ? "Fund wallet and buy policy" : ownerWallet ? "Buy policy" : "Buy demo policy"}
             </button>}
@@ -224,9 +273,22 @@ export function DemoConsole() {
             <div><dt>Approvals</dt><dd>{voteCount} / 2 required</dd></div>
             <div className={status === "Paid" ? "demo-reimbursed" : ""}><dt>{status === "Paid" ? "Reimbursed" : "Claim payout"}</dt><dd>{policy && policy.payout !== "0" ? near(policy.payout) : "—"}</dd></div>
           </dl>
+          {policy?.mandate && status === "InReview" && (
+            <div className="demo-mandate">
+              <label htmlFor="loss-transaction">Simulated loss transaction hash</label>
+              <input id="loss-transaction" value={lossTx} onChange={event => setLossInput({ policy: policyKey, hash: event.target.value })} disabled={!!policy.evidence} />
+              <button type="button" disabled={!!pending || !lossTx || !!policy.evidence} onClick={() => void inspectEvidence()}>Verify loss receipt</button>
+            </div>
+          )}
+          {evidence && (
+            <p className="demo-description">
+              Verified transfer of {near(evidence.amount)} to {evidence.recipient} at block {evidence.block_height.toLocaleString()}.
+              <br /><a className="demo-proof" href={`${explorer}${evidence.transaction_hash}/receipts`} target="_blank" rel="noreferrer">View loss receipt ↗</a>
+            </p>
+          )}
           <div className="demo-actions">
-            {button("review1", "Approve as reviewer 1", status === "InReview" && voteCount === 0)}
-            {button("review2", "Approve as reviewer 2", status === "InReview" && voteCount === 1)}
+            {button("review1", "Approve as reviewer 1", status === "InReview" && voteCount === 0 && canReview)}
+            {button("review2", "Approve as reviewer 2", status === "InReview" && voteCount === 1 && canReview)}
             {button("pay", "Pay claim", status === "Approved")}
           </div>
           {state && <p className="demo-id">Recovery account · {state.beneficiary}</p>}

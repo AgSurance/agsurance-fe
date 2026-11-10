@@ -2,7 +2,8 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PublicKey } from "@near-js/crypto";
 import { call, rpc, transact, view, type DemoAccounts } from "../../../lib/demo-near";
-import { checkoutTotal, type Activity, type Dashboard, type Incident, type Step } from "../../../lib/demo-state";
+import { verifyLossEvidence } from "../../../lib/claim-evidence";
+import { checkoutTotal, type Activity, type Dashboard, type Incident, type Mandate, type Step } from "../../../lib/demo-state";
 
 export const runtime = "nodejs";
 let busy = false;
@@ -29,6 +30,7 @@ async function snapshot(accounts: DemoAccounts) {
   }
   return {
     ...dashboard, incident, wallet: accounts.wallet, vault: accounts.vault, runner: accounts.runner.id,
+    suggestedSupplier: accounts.supplier,
     demoOwner: (dashboard.owner ?? accounts.owner.id) === accounts.owner.id, payoutProof,
   };
 }
@@ -37,9 +39,12 @@ export async function GET(request: Request) {
   const accounts = config();
   if (!accounts) return Response.json({ error: "Testnet demo accounts are not configured." }, { status: 503 });
   try {
-    const hash = new URL(request.url).searchParams.get("owner_tx");
+    const params = new URL(request.url).searchParams;
+    const lossTx = params.get("loss_tx");
+    if (lossTx) return Response.json(await verifyLossEvidence(await snapshot(accounts), lossTx));
+    const hash = params.get("owner_tx");
     if (hash) {
-      const method = new URL(request.url).searchParams.get("method");
+      const method = params.get("method");
       if (!method || !["buy_policy", "connect_agent", "revoke_agent", "retry_checkout_refund"].includes(method)) {
         return Response.json({ error: "Invalid owner action." }, { status: 400 });
       }
@@ -62,11 +67,16 @@ export async function GET(request: Request) {
         return Response.json({ error: "The transaction does not match the requested owner action." }, { status: 409 });
       }
       if (method === "connect_agent" || method === "revoke_agent") {
-        const params = new URL(request.url).searchParams;
         const args = JSON.parse(Buffer.from(action.args, "base64").toString()) as { policy_id: number; public_key?: string };
         if (String(args.policy_id) !== params.get("policy_id") ||
             (method === "connect_agent" && args.public_key !== params.get("public_key"))) {
           return Response.json({ error: "The transaction does not match the requested policy or agent key." }, { status: 409 });
+        }
+      }
+      if (method === "buy_policy" && params.has("supplier")) {
+        const args = JSON.parse(Buffer.from(action.args, "base64").toString()) as Mandate;
+        if (args.supplier !== params.get("supplier") || args.limit !== params.get("limit")) {
+          return Response.json({ error: "The transaction does not match the requested spending mandate." }, { status: 409 });
         }
       }
       const value = outcome.status.SuccessValue;
@@ -90,7 +100,9 @@ export async function POST(request: Request) {
   if (busy) return Response.json({ error: "Wait for the pending transaction and refresh the dashboard." }, { status: 409 });
   busy = true;
   try {
-    const { step, publicKey } = await request.json() as { step: Step; publicKey?: string };
+    const { step, publicKey, mandate, lossTx } = await request.json() as {
+      step: Step; publicKey?: string; mandate?: Mandate; lossTx?: string;
+    };
     if (step === "connect") {
       if (!publicKey?.startsWith("ed25519:")) return Response.json({ error: "Enter an Ed25519 public key." }, { status: 400 });
       PublicKey.fromString(publicKey);
@@ -99,10 +111,17 @@ export async function POST(request: Request) {
     const policy = current.policy;
     const hasLoss = !!policy && current.incident?.policy_id === policy.id;
     const args = { policy_id: policy?.id };
+    if (step === "buy" && current.max_supplier_limit && !mandate) {
+      return Response.json({ error: "Choose a supplier and spending limit." }, { status: 400 });
+    }
+    const reviewing = step === "review1" || step === "review2";
+    const evidence = reviewing && policy?.mandate
+      ? await verifyLossEvidence(current, lossTx ?? policy.evidence?.transaction_hash ?? "")
+      : undefined;
     const canBuy = current.demoOwner && !current.checkout && (!policy || policy.phase === "Paid");
     const commands = {
       buy: { ready: canBuy, actor: accounts.owner, target: accounts.vault,
-        action: call("buy_policy", {}, BigInt(checkoutTotal(current))), label: "Policy activated" },
+        action: call("buy_policy", current.max_supplier_limit ? mandate ?? {} : {}, BigInt(checkoutTotal(current))), label: "Policy activated" },
       refund: { ready: current.demoOwner && current.checkout?.phase === "RefundAvailable", actor: accounts.owner, target: accounts.vault,
         action: call("retry_checkout_refund", {}), label: "Checkout refunded" },
       connect: { ready: current.demoOwner && !!current.agent_funding && policy?.phase === "Active" && !current.agent,
@@ -115,9 +134,9 @@ export async function POST(request: Request) {
       submit: { ready: !current.owner && policy?.phase === "Active" && hasLoss, actor: accounts.runner, target: accounts.vault,
         action: call("submit_claim", args), label: "Claim filed with wallet evidence" },
       review1: { ready: policy?.phase === "InReview" && policy.votes === 0, actor: accounts.reviewers[0], target: accounts.vault,
-        action: call("approve_claim", args), label: "Reviewer 1 approved" },
+        action: call("approve_claim", { ...args, evidence }), label: "Reviewer 1 approved" },
       review2: { ready: policy?.phase === "InReview" && policy.votes === 1, actor: accounts.reviewers[1], target: accounts.vault,
-        action: call("approve_claim", args), label: "Reviewer 2 approved" },
+        action: call("approve_claim", { ...args, evidence }), label: "Reviewer 2 approved" },
       pay: { ready: policy?.phase === "Approved", actor: accounts.runner, target: accounts.vault,
         action: call("pay_claim", args), label: "Reimbursement confirmed" },
     };
@@ -128,7 +147,7 @@ export async function POST(request: Request) {
     const recipient = step === "pay" ? current.beneficiary : step === "loss"
       ? (await view<Incident>(accounts.wallet, "incident")).recipient : undefined;
     const transfer = recipient && tx.receipts.find(receipt => receipt.outcome.executor_id === recipient && "SuccessValue" in receipt.outcome.status);
-    const activity: Activity = { label: command.label, actor: command.actor.id, hash: tx.hash, receipt: transfer ? transfer.id : undefined };
+    const activity: Activity = { label: command.label, actor: command.actor.id, hash: tx.hash, receipt: transfer ? transfer.id : undefined, policyId: policy?.id, vault: accounts.vault };
     if (step === "pay" && policy && transfer) {
       const destination = proofFile(accounts.vault, policy.id);
       await writeFile(`${destination}.tmp`, JSON.stringify(activity), { mode: 0o600 });

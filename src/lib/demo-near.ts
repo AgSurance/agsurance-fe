@@ -14,6 +14,7 @@ export type Actor = { id: string; key: string };
 export type DemoAccounts = {
   owner: Actor;
   policyOwner?: string;
+  supplier?: string;
   runner: Actor;
   reviewers: [Actor, Actor, Actor];
   wallet: string;
@@ -33,10 +34,10 @@ export async function rpc<T>(method: string, params: object): Promise<T> {
   return body.result;
 }
 
-export async function view<T>(account: string, method: string): Promise<T> {
+export async function view<T>(account: string, method: string, args: object = {}): Promise<T> {
   const result = await rpc<{ result: number[] }>("query", {
     request_type: "call_function", finality: "final", account_id: account,
-    method_name: method, args_base64: "e30=",
+    method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString("base64"),
   });
   return JSON.parse(Buffer.from(result.result).toString()) as T;
 }

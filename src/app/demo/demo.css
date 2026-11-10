@@ -33,3 +33,7 @@
 .demo-agent > button { margin-top: 8px; }
 .demo-command { display: grid; gap: 5px; margin-top: 12px; padding: 10px; background: #f7f9ff; overflow-wrap: anywhere; }
 .demo-proof { display: inline-block; margin-top: 8px; text-decoration: underline; color: var(--color-deep-blue); }
+.demo-mandate { display: grid; gap: 6px; margin: 12px 0; }
+.demo-mandate label { font-weight: 600; }
+.demo-mandate input { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--dark-line); font-family: ui-monospace, monospace; }
+.demo-mandate button { width: fit-content; }
