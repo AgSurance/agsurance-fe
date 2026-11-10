@@ -24,3 +24,12 @@
 .demo-id { font: .74rem/1.5 ui-monospace, monospace; overflow-wrap: anywhere; color: var(--muted); }
 .demo-error { background: white; color: var(--ink); padding: 10px; margin-bottom: 12px; overflow-wrap: anywhere; }
 @media (max-width: 760px) { .demo-grid { grid-template-columns: 1fr; } }
+.demo-agent { margin-top: 18px; padding-top: 4px; border-top: 1px solid var(--dark-line); }
+.demo-agent h3 { margin-top: 12px; }
+.demo-agent form { display: grid; gap: 8px; }
+.demo-agent label { font-weight: 600; }
+.demo-agent input { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--dark-line); font-family: ui-monospace, monospace; }
+.demo-agent button { width: fit-content; }
+.demo-agent > button { margin-top: 8px; }
+.demo-command { display: grid; gap: 5px; margin-top: 12px; padding: 10px; background: #f7f9ff; overflow-wrap: anywhere; }
+.demo-proof { display: inline-block; margin-top: 8px; text-decoration: underline; color: var(--color-deep-blue); }

@@ -28,11 +28,20 @@ bun run dev --hostname 127.0.0.1
 
 Open `http://127.0.0.1:3000/demo`. The setup script creates funded testnet accounts and writes their demo signing configuration to the ignored `.env.local` file. Keep this file local. The signing route is for the loopback demo only. Setup can resume with the same file after a partial failure.
 
-1. Buy a demo policy as the owner. The vault locks 0.4 testnet NEAR of capacity against a 0.01 NEAR premium.
-2. Simulate a 0.3 NEAR loss from the wallet fixture and submit the claim as the scripted runner.
-3. Record two reviewer approvals and pay the claim. A 0.05 NEAR deductible leaves a 0.25 NEAR payout to the fixed recovery account.
+To use an external owner wallet, set `AGSURANCE_POLICY_OWNER` to a funded named testnet account before first setup. Connect that wallet through NEAR Connect in the dashboard. With the generated owner account, **Buy demo policy** and **Connect Agent** use the local demo signer.
 
-The wallet fixture makes a real testnet transfer and records the incident only after that transfer succeeds. The claims vault checks the record and only marks reimbursement complete after its own transfer succeeds. Reviewer buttons use distinct test accounts in the same local presenter session. Explorer links point to the actual transactions. The current policy lives on-chain and the console's transaction trail is kept in the browser.
+1. Buy a policy. The vault locks 0.4 testnet NEAR against a 0.01 NEAR premium.
+2. From the agent runtime, run `bun scripts/agent.ts init .agsurance-agent.key`. Paste only the printed public key into **Connect Agent**. The owner funds the agent subaccount with 0.1 testnet NEAR. Keep the key file in the agent runtime.
+3. Record a 0.3 NEAR simulated loss in the dashboard. Then run the following from the agent runtime with the vault ID shown on the page:
+
+   ```sh
+   bun scripts/agent.ts status <vault.testnet>
+   bun scripts/agent.ts submit-claim <vault.testnet> .agsurance-agent.key
+   ```
+
+4. Reopen or refresh the dashboard. Record two reviewer approvals and select **Pay claim**. The vault sends 0.25 NEAR after the deductible. **Verify final payout receipt** opens the transaction receipts in NearBlocks.
+
+The CLI reads and signs directly against NEAR testnet RPC. The owner can revoke the policy's agent grant, which denies new submissions from the old key. The demo review accounts and the loss fixture are provided by the local console. The dashboard stores its confirmed payout link by vault and policy in the ignored `.agsurance-demo` directory. The deployment that powers the original public replay uses the original contract. Provision a fresh testnet vault to use Connect Agent.
 
 The process cards adapt [React Bits SpotlightCard](https://github.com/DavidHDev/react-bits/blob/c83b5e7e026f003af33ff9ebc3d93afb5c86ad22/src/ts-tailwind/Components/SpotlightCard/SpotlightCard.tsx). See [the upstream license](licenses/react-bits.md).
 

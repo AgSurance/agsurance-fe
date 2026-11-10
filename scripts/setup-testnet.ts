@@ -8,13 +8,15 @@ const existing = saved ? JSON.parse(saved) as DemoAccounts : undefined;
 const baseId = existing?.owner.id ?? `agsurance-${randomBytes(4).toString("hex")}.testnet`;
 const createActor = (id: string) => ({ id, key: KeyPair.fromRandom("ed25519").toString() });
 const owner = existing?.owner ?? createActor(baseId);
+const policyOwner = existing?.policyOwner ?? process.env.AGSURANCE_POLICY_OWNER ?? owner.id;
+if (!policyOwner.endsWith(".testnet")) throw new Error("Use a named NEAR testnet wallet as policy owner.");
 const runner = existing?.runner ?? createActor(`agent.${baseId}`);
 const wallet = createActor(`wallet.${baseId}`);
 const vault = createActor(`vault.${baseId}`);
 const beneficiary = createActor(`recovery.${baseId}`);
 const recipient = createActor(`incident.${baseId}`);
 const reviewers = existing?.reviewers ?? [1, 2, 3].map(n => createActor(`reviewer${n}.${baseId}`)) as [Actor, Actor, Actor];
-const accounts: DemoAccounts = { owner, runner, reviewers, wallet: wallet.id, vault: vault.id };
+const accounts: DemoAccounts = { owner, policyOwner, runner, reviewers, wallet: wallet.id, vault: vault.id };
 const wasm = process.argv[2];
 if (!wasm) throw new Error("Pass the smart-contract WASM output directory");
 const [walletCode, vaultCode] = await Promise.all([
@@ -68,8 +70,8 @@ await createAccount(beneficiary, 30);
 await createAccount(recipient, 30);
 for (const reviewer of reviewers) await createAccount(reviewer, 100);
 await createAccount(wallet, 2500, [actions.deployContract(walletCode), call("new", { runner: runner.id, recipient: recipient.id })]);
-await createAccount(vault, 2000, [actions.deployContract(vaultCode), call("new", {
-  owner: owner.id, runner: runner.id, wallet: wallet.id, beneficiary: beneficiary.id, reviewers: reviewers.map(r => r.id),
+await createAccount(vault, 2600, [actions.deployContract(vaultCode), call("new", {
+  owner: policyOwner, runner: runner.id, wallet: wallet.id, beneficiary: beneficiary.id, reviewers: reviewers.map(r => r.id),
 })]);
 const dashboard = await view<{ reserve: string }>(vault.id, "dashboard");
 if (dashboard.reserve === "0") {

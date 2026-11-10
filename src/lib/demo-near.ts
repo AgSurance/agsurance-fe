@@ -2,8 +2,10 @@ import { createHash } from "node:crypto";
 import { KeyPair, PublicKey } from "@near-js/crypto";
 import { actionCreators, createTransaction, Signature, SignedTransaction, type Action } from "@near-js/transactions";
 
+import { TESTNET_RPC } from "./demo-state";
+
 export const actions = actionCreators;
-const testnetRpc = "https://rpc.testnet.near.org";
+const testnetRpc = process.env.AGSURANCE_TESTNET_RPC ?? TESTNET_RPC;
 export const milliNear = BigInt(10) ** BigInt(21);
 export const call = (method: string, args: object, deposit = BigInt(0)) =>
   actions.functionCall(method, args, BigInt("75000000000000"), deposit);
@@ -11,6 +13,7 @@ export const call = (method: string, args: object, deposit = BigInt(0)) =>
 export type Actor = { id: string; key: string };
 export type DemoAccounts = {
   owner: Actor;
+  policyOwner?: string;
   runner: Actor;
   reviewers: [Actor, Actor, Actor];
   wallet: string;
