@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { CoverageEconomics } from "./coverage-economics";
 import { SpotlightCard } from "./spotlight-card";
 
 const replay = "https://agsurance.github.io/agsurance-fe/";
@@ -55,6 +56,7 @@ export default function Home() {
         <nav aria-label="Main navigation" className="main-nav">
           <a href="#how-it-works">How it works</a>
           <a href="#coverage">Coverage</a>
+          <a href="#economics">Economics</a>
         </nav>
         <Link className="header-link" href="/demo">Live testnet demo <Arrow /></Link>
       </header>
@@ -137,6 +139,8 @@ export default function Home() {
             </details>
           </article>
         </section>
+
+        <CoverageEconomics />
       </main>
 
       <footer className="site-footer">
