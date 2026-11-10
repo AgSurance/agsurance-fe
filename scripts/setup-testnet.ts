@@ -80,6 +80,7 @@ await createAccount(vault, 3200, [actions.deployContract(vaultCode), call("new",
   reserve_pool: pool.id,
   test_review_seconds: process.env.AGSURANCE_TEST_REVIEW_SECONDS ? Number(process.env.AGSURANCE_TEST_REVIEW_SECONDS) : null,
   test_window_seconds: process.env.AGSURANCE_TEST_WINDOW_SECONDS ? Number(process.env.AGSURANCE_TEST_WINDOW_SECONDS) : null,
+  test_claim_seconds: process.env.AGSURANCE_TEST_CLAIM_SECONDS ? Number(process.env.AGSURANCE_TEST_CLAIM_SECONDS) : null,
 })]);
 if (!(await view<string | null>(pool.id, "vault_beneficiary", { vault: vault.id }))) {
   await transact(owner, pool.id, [call("register_vault", { vault: vault.id, beneficiary: beneficiary.id })]);

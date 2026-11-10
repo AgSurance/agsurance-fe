@@ -51,9 +51,9 @@ export async function verifyLossEvidence(current: DemoState, transactionHash: st
   const outcome = result.receipts_outcome.find(entry => entry.id === receipt.receipt_id);
   if (outcome?.outcome.status.SuccessValue === undefined) throw new Error("The transfer receipt failed.");
 
-  const block = await rpc<{ header: { height: number } }>("block", { block_id: outcome.block_hash });
+  const block = await rpc<{ header: { height: number; timestamp_nanosec: string } }>("block", { block_id: outcome.block_hash });
   const height = block.header.height;
-  if (height < policy.activation_height || height > incident.block_height) {
+  if ((!current.coverage?.window_seconds && height < policy.activation_height) || height > incident.block_height) {
     throw new Error("The transfer block falls outside the recorded policy incident.");
   }
   if (incident.recipient === mandate.supplier && BigInt(incident.amount) <= BigInt(mandate.limit)) {
@@ -62,5 +62,6 @@ export async function verifyLossEvidence(current: DemoState, transactionHash: st
   return {
     transaction_hash: transactionHash, receipt_id: receipt.receipt_id, block_height: height,
     recipient: incident.recipient, amount: incident.amount,
+    block_timestamp_ms: Number(BigInt(block.header.timestamp_nanosec) / BigInt(1_000_000)),
   };
 }

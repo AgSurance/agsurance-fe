@@ -1,9 +1,11 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PublicKey } from "@near-js/crypto";
-import { call, rpc, transact, view, type DemoAccounts } from "../../../lib/demo-near";
+import { call, PendingTransactionError, readDashboard, reconcileTransaction, rpc, transact, TransactionFailedError, transferReceipt, view, type DemoAccounts, type SignedReference } from "../../../lib/demo-near";
 import { verifyLossEvidence } from "../../../lib/claim-evidence";
-import { checkoutTotal, type Activity, type Dashboard, type Incident, type Mandate, type ReserveStatus, type Step } from "../../../lib/demo-state";
+import { checkoutTotal, evidenceIsCovered, projectStatus, type Activity, type Dashboard, type Mandate, type Step } from "../../../lib/demo-state";
+import { clearPending, readPending, recordPending } from "../../../lib/pending-transaction";
 
 export const runtime = "nodejs";
 let busy = false;
@@ -14,6 +16,8 @@ function config(): DemoAccounts | null {
 }
 
 const proofDirectory = join(process.cwd(), ".agsurance-demo");
+const pendingFile = (vault: string) => join(proofDirectory, `${vault}-pending.json`);
+type PendingStep = SignedReference & { step: Step; label: string; policyId?: number; sender?: string; recipient?: string };
 const proofFile = (vault: string, policyId: number, kind: "pay" | "recover") =>
   join(proofDirectory, `${vault}-${policyId}${kind === "recover" ? "-recovery" : ""}.json`);
 
@@ -26,22 +30,45 @@ async function readProof(vault: string, policyId: number, kind: "pay" | "recover
 }
 
 async function snapshot(accounts: DemoAccounts) {
-  const [dashboard, incident] = await Promise.all([
-    view<Dashboard>(accounts.vault, "dashboard"), view<Incident | null>(accounts.wallet, "incident"),
+  const [dashboard, pending] = await Promise.all([
+    readDashboard(accounts.vault, accounts.wallet), readPending<PendingStep>(pendingFile(accounts.vault)),
   ]);
   const policy = dashboard.policy;
-  const [operatingBalance, payoutProof, recoveryProof, reserveStatus] = await Promise.all([
-    dashboard.coverage ? view<string>(accounts.wallet, "operating_balance") : undefined,
+  const [payoutProof, recoveryProof] = await Promise.all([
     policy?.phase === "Paid" ? readProof(accounts.vault, policy.id, "pay") : undefined,
     policy && dashboard.coverage?.retired ? readProof(accounts.vault, policy.id, "recover") : undefined,
-    dashboard.reserve_pool ? view<ReserveStatus>(dashboard.reserve_pool, "reserve_status") : undefined,
   ]);
   return {
-    ...dashboard, incident, wallet: accounts.wallet, vault: accounts.vault, runner: accounts.runner.id,
-    suggestedSupplier: accounts.supplier, operatingBalance,
+    ...dashboard, incident: dashboard.incident ?? null, wallet: accounts.wallet, vault: accounts.vault, runner: accounts.runner.id,
+    suggestedSupplier: accounts.supplier,
     demoRecovery: accounts.recovery?.id === dashboard.beneficiary,
-    demoOwner: (dashboard.owner ?? accounts.owner.id) === accounts.owner.id, payoutProof, recoveryProof, reserveStatus,
+    demoOwner: (dashboard.owner ?? accounts.owner.id) === accounts.owner.id, payoutProof, recoveryProof,
+    status: projectStatus(dashboard, pending && { transactionHash: pending.transactionHash, signerId: pending.signerId }),
   };
+}
+
+async function saveProof(vault: string, policyId: number, kind: "pay" | "recover", activity: Activity) {
+  const destination = proofFile(vault, policyId, kind);
+  await mkdir(proofDirectory, { recursive: true, mode: 0o700 });
+  const temporary = `${destination}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, JSON.stringify(activity), { mode: 0o600 });
+    await rename(temporary, destination);
+  } finally {
+    await rm(temporary, { force: true });
+  }
+}
+
+async function finishStep(accounts: DemoAccounts, pending: PendingStep) {
+  const { step, label, signerId, transactionHash, policyId, sender } = pending;
+  const recipient = pending.recipient ?? (step === "loss" ? (await snapshot(accounts)).incident?.recipient : undefined);
+  const receipt = sender && recipient ? await transferReceipt(pending, sender, recipient) : undefined;
+  const activity = { label, actor: signerId, hash: transactionHash, receipt, policyId, vault: accounts.vault };
+  if ((step === "pay" || step === "recover") && policyId && receipt) await saveProof(accounts.vault, policyId, step, activity);
+  const state = await snapshot(accounts);
+  await clearPending(pendingFile(accounts.vault), pending);
+  state.status.pendingTransaction = null;
+  return Response.json({ state, activity });
 }
 
 export async function GET(request: Request) {
@@ -71,29 +98,39 @@ export async function GET(request: Request) {
           signer_id: string; receiver_id: string; hash: string;
           actions: { FunctionCall?: { method_name: string; args: string } }[];
         };
-      }>("tx", { tx_hash: hash, sender_account_id: signer, wait_until: "FINAL" });
+      }>("tx", { tx_hash: hash, sender_account_id: signer, wait_until: "NONE" });
+      if (outcome.final_execution_status !== "FINAL") {
+        return Response.json({ code: "pending_confirmation", error: `Wallet transaction ${hash} is still awaiting finality.` }, { status: 409 });
+      }
       const transaction = outcome.transaction;
       const action = transaction.actions.length === 1 ? transaction.actions[0].FunctionCall : undefined;
-      if (outcome.final_execution_status !== "FINAL" || transaction.hash !== hash ||
+      if (transaction.hash !== hash ||
           transaction.signer_id !== signer || transaction.receiver_id !== accounts.vault || action?.method_name !== method) {
-        return Response.json({ error: "The transaction does not match the requested owner action." }, { status: 409 });
+        return Response.json({ code: "transaction_mismatch", error: "The transaction does not match the requested owner action." }, { status: 409 });
       }
-      if (recoveryMethod || method === "connect_agent" || method === "revoke_agent") {
+      if (recoveryMethod || method === "connect_agent" || method === "revoke_agent" || (method === "retry_checkout_refund" && params.has("policy_id"))) {
         const args = JSON.parse(Buffer.from(action.args, "base64").toString()) as { policy_id: number; public_key?: string };
         if (String(args.policy_id) !== params.get("policy_id") ||
             (method === "connect_agent" && args.public_key !== params.get("public_key"))) {
-          return Response.json({ error: "The transaction does not match the requested policy or agent key." }, { status: 409 });
+          return Response.json({ code: "transaction_mismatch", error: "The transaction does not match the requested policy or agent key." }, { status: 409 });
         }
       }
       if (method === "buy_policy" && params.has("supplier")) {
         const args = JSON.parse(Buffer.from(action.args, "base64").toString()) as Mandate;
         if (args.supplier !== params.get("supplier") || args.limit !== params.get("limit")) {
-          return Response.json({ error: "The transaction does not match the requested spending mandate." }, { status: 409 });
+          return Response.json({ code: "transaction_mismatch", error: "The transaction does not match the requested spending mandate." }, { status: 409 });
         }
       }
       const value = outcome.status.SuccessValue;
       if (value === undefined || Buffer.from(value, "base64").toString() === "false") {
-        return Response.json({ error: "The owner transaction did not complete. Check the checkout or refund status." }, { status: 409 });
+        return Response.json({ code: "transaction_failed", error: "The owner transaction did not complete. Check the checkout or refund status." }, { status: 409 });
+      }
+      if (method === "recover_wallet") {
+        const receipt = await transferReceipt({ transactionHash: hash, signerId: signer }, accounts.wallet, signer);
+        if (receipt) {
+          const policyId = Number(params.get("policy_id"));
+          await saveProof(accounts.vault, policyId, "recover", { label: "Wallet balance recovered", actor: signer, hash, receipt, policyId, vault: accounts.vault });
+        }
       }
     }
     return Response.json(await snapshot(accounts));
@@ -111,18 +148,34 @@ export async function POST(request: Request) {
   if (!accounts) return Response.json({ error: "Testnet demo accounts are not configured." }, { status: 503 });
   if (busy) return Response.json({ error: "Wait for the pending transaction and refresh the dashboard." }, { status: 409 });
   busy = true;
+  const file = pendingFile(accounts.vault);
+  let pending: PendingStep | null = null;
   try {
-    const { step, publicKey, mandate, lossTx } = await request.json() as {
-      step: Step; publicKey?: string; mandate?: Mandate; lossTx?: string;
+    const { step, publicKey, mandate, lossTx, expectedPolicyId, expectedCheckoutId } = await request.json() as {
+      step: Step | "reconcile"; publicKey?: string; mandate?: Mandate; lossTx?: string;
+      expectedPolicyId?: number | null; expectedCheckoutId?: number | null;
     };
+    pending = await readPending<PendingStep>(file);
+    if (pending) {
+      if (step !== "reconcile") throw new PendingTransactionError(pending);
+      await reconcileTransaction(pending);
+      return await finishStep(accounts, pending);
+    }
+    if (step === "reconcile") return Response.json({ error: "There is no pending transaction." }, { status: 409 });
     if (step === "connect") {
       if (!publicKey?.startsWith("ed25519:")) return Response.json({ error: "Enter an Ed25519 public key." }, { status: 400 });
       PublicKey.fromString(publicKey);
     }
     const current = await snapshot(accounts);
     const policy = current.policy;
-    const hasLoss = !!policy && current.incident?.policy_id === policy.id;
-    const args = { policy_id: policy?.id };
+    const { status } = current;
+    if (expectedPolicyId !== status.policyId || (step === "refund" && expectedCheckoutId !== status.checkoutPolicyId)) {
+      return Response.json({ code: "stale_policy", error: "The policy or checkout changed. Refresh before taking this action." }, { status: 409 });
+    }
+    if (status.actions[step] !== "available") {
+      return Response.json({ code: status.actions[step], error: "This action is unavailable for the current policy state." }, { status: 409 });
+    }
+    const args = { policy_id: expectedPolicyId ?? undefined };
     if (step === "buy" && current.max_supplier_limit && !mandate) {
       return Response.json({ error: "Choose a supplier and spending limit." }, { status: 400 });
     }
@@ -130,60 +183,65 @@ export async function POST(request: Request) {
     const evidence = reviewing && policy?.mandate
       ? await verifyLossEvidence(current, lossTx ?? policy.evidence?.transaction_hash ?? "")
       : undefined;
+    const reject = !!evidence && !evidenceIsCovered(current, evidence);
+    const vote = call(reject ? "reject_claim" : "approve_claim", { ...args, evidence });
     const recovery = current.demoRecovery ? accounts.recovery : undefined;
-    const coverage = current.coverage;
-    const reserve = current.reserveStatus;
-    const canPay = (policy?.phase === "Approved" || (!!reserve && policy?.phase === "Paying")) &&
-      (!reserve || reserve.shortfall === "0");
-    const canBuy = current.demoOwner && !coverage?.paused && !current.checkout && (!policy || policy.phase === "Paid");
+    const owner = current.demoOwner ? accounts.owner : undefined;
+    const voteLabel = reject ? "voted to reject" : "approved";
     const commands = {
-      buy: { ready: canBuy, actor: accounts.owner, target: accounts.vault,
-        action: call("buy_policy", current.max_supplier_limit ? mandate ?? {} : {}, BigInt(checkoutTotal(current))), label: "Policy activated" },
-      refund: { ready: current.demoOwner && (current.checkout?.phase === "RefundAvailable" || current.checkout?.phase === "ReleaseAvailable"), actor: accounts.owner, target: accounts.vault,
-        action: call("retry_checkout_refund", {}), label: "Checkout refunded" },
-      connect: { ready: current.demoOwner && !!current.agent_funding && policy?.phase === "Active" && !current.agent && !coverage?.paused,
-        actor: accounts.owner, target: accounts.vault,
+      buy: { actor: owner, target: accounts.vault,
+        action: call("buy_policy", { ...(mandate ?? {}), expected_policy_id: expectedPolicyId ?? 0 }, BigInt(checkoutTotal(current))), label: "Policy activated" },
+      refund: { actor: owner, target: accounts.vault,
+        action: call("retry_checkout_refund", { policy_id: expectedCheckoutId }), label: "Checkout refunded" },
+      connect: { actor: owner, target: accounts.vault,
         action: call("connect_agent", { ...args, public_key: publicKey }, BigInt(current.agent_funding ?? "0")), label: "Agent connected" },
-      revoke: { ready: current.demoOwner && !!current.agent?.connected, actor: accounts.owner, target: accounts.vault,
+      revoke: { actor: owner, target: accounts.vault,
         action: call("revoke_agent", args, BigInt(1)), label: "Agent access revoked" },
-      pause: { ready: !!recovery && !!coverage && !!policy && !coverage.paused, actor: recovery, target: accounts.vault,
+      pause: { actor: recovery, target: accounts.vault,
         action: call("pause_wallet", args), label: "Agent access stopped" },
-      recover: { ready: !!recovery && !!coverage?.paused && !coverage.recovery_pending && !coverage.retired && !coverage.renewal_pending,
-        actor: recovery, target: accounts.vault, action: call("recover_wallet", args), label: "Wallet balance recovered" },
-      "premium-refund": { ready: !!recovery && !!coverage?.unused_premium, actor: recovery, target: accounts.vault,
+      recover: { actor: recovery, target: accounts.vault, action: call("recover_wallet", args), label: "Wallet balance recovered" },
+      "premium-refund": { actor: recovery, target: accounts.vault,
         action: call("refund_unused_premium", args), label: "Unused premium refunded" },
-      "recovery-claim": { ready: !!recovery && !!coverage?.paused && policy?.phase === "Active" && hasLoss, actor: recovery, target: accounts.vault,
+      "recovery-claim": { actor: recovery, target: accounts.vault,
         action: call("submit_claim", args), label: "Recovery account filed claim" },
-      loss: { ready: policy?.phase === "Active" && !hasLoss && !coverage?.paused && (coverage?.active ?? true), actor: accounts.runner, target: accounts.wallet,
+      loss: { actor: accounts.runner, target: accounts.wallet,
         action: call("simulate_loss", args), label: "Simulated loss confirmed" },
-      submit: { ready: !current.owner && policy?.phase === "Active" && hasLoss, actor: accounts.runner, target: accounts.vault,
+      submit: { actor: accounts.runner, target: accounts.vault,
         action: call("submit_claim", args), label: "Claim filed with wallet evidence" },
-      review1: { ready: policy?.phase === "InReview" && !(policy.votes & 1), actor: accounts.reviewers[0], target: accounts.vault,
-        action: call("approve_claim", { ...args, evidence }), label: "Reviewer 1 approved" },
-      review2: { ready: policy?.phase === "InReview" && !(policy.votes & 2), actor: accounts.reviewers[1], target: accounts.vault,
-        action: call("approve_claim", { ...args, evidence }), label: "Reviewer 2 approved" },
-      review3: { ready: policy?.phase === "InReview" && !(policy.votes & 4), actor: accounts.reviewers[2], target: accounts.vault,
-        action: call("approve_claim", { ...args, evidence }), label: "Reviewer 3 approved" },
-      escalate: { ready: policy?.phase === "InReview" && !!policy.review_deadline && !policy.escalated_at,
-        actor: accounts.runner, target: accounts.vault, action: call("escalate_claim", args), label: "Claim escalation recorded" },
-      pay: { ready: canPay, actor: accounts.runner, target: accounts.vault,
-        action: call("pay_claim", args), label: "Reimbursement confirmed" },
+      review1: { actor: accounts.reviewers[0], target: accounts.vault, action: vote, label: `Reviewer 1 ${voteLabel}` },
+      review2: { actor: accounts.reviewers[1], target: accounts.vault, action: vote, label: `Reviewer 2 ${voteLabel}` },
+      review3: { actor: accounts.reviewers[2], target: accounts.vault, action: vote, label: `Reviewer 3 ${voteLabel}` },
+      escalate: { actor: accounts.runner, target: accounts.vault, action: call("escalate_claim", args), label: "Claim escalation recorded" },
+      pay: { actor: accounts.runner, target: accounts.vault, action: call("pay_claim", args), label: "Reimbursement confirmed" },
+      close: { actor: accounts.runner, target: accounts.vault, action: call("close_policy", args), label: "Policy closed and reserve released" },
     };
     const command = Object.hasOwn(commands, step) ? commands[step] : undefined;
-    if (!command?.ready || !command.actor) return Response.json({ error: "This action is unavailable for the current policy state." }, { status: 409 });
-    if (step === "pay" || step === "recover") await mkdir(proofDirectory, { recursive: true, mode: 0o700 });
-    const tx = await transact(command.actor, command.target, [command.action]);
-    const recipient = ["pay", "recover", "premium-refund"].includes(step) ? current.beneficiary : step === "loss"
-      ? (await view<Incident>(accounts.wallet, "incident")).recipient : undefined;
-    const transfer = recipient && tx.receipts.find(receipt => receipt.outcome.executor_id === recipient && "SuccessValue" in receipt.outcome.status);
-    const activity: Activity = { label: command.label, actor: command.actor.id, hash: tx.hash, receipt: transfer ? transfer.id : undefined, policyId: policy?.id, vault: accounts.vault };
-    if ((step === "pay" || step === "recover") && policy && transfer) {
-      const destination = proofFile(accounts.vault, policy.id, step);
-      await writeFile(`${destination}.tmp`, JSON.stringify(activity), { mode: 0o600 });
-      await rename(`${destination}.tmp`, destination);
-    }
-    return Response.json({ state: await snapshot(accounts), activity });
+    if (!command?.actor) return Response.json({ error: "This action requires a different signer." }, { status: 409 });
+    const sender = step === "pay" ? current.reserve_pool ?? current.vault
+      : step === "loss" || step === "recover" ? current.wallet
+        : step === "premium-refund" ? current.vault : undefined;
+    const recipient = ["pay", "recover", "premium-refund"].includes(step) ? current.beneficiary : undefined;
+    await transact(command.actor, command.target, [command.action], async reference => {
+      const entry = { ...reference, step, label: command.label, policyId: policy?.id, sender, recipient };
+      await recordPending(file, entry);
+      pending = entry;
+    });
+    if (!pending) throw new Error("Missing transaction reference");
+    return await finishStep(accounts, pending);
   } catch (error) {
+    if (error instanceof TransactionFailedError && pending) {
+      await clearPending(file, pending);
+      return Response.json({ code: "transaction_failed", error: error.message }, { status: 409 });
+    }
+    if (pending || error instanceof PendingTransactionError) {
+      const reference = pending ?? (error as PendingTransactionError).reference;
+      return Response.json({
+        code: "pending_confirmation",
+        error: `Check transaction ${reference.transactionHash} before retrying.`,
+        transactionHash: reference.transactionHash,
+        signerId: reference.signerId,
+      }, { status: 409 });
+    }
     return Response.json({ error: (error as Error).message }, { status: 502 });
   } finally {
     busy = false;

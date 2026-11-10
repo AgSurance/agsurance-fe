@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { NearConnector, NearWalletBase } from "@hot-labs/near-connect";
-import { CHECKOUT_GAS, checkoutTotal, parseNear, TESTNET_RPC, type Activity, type DemoState, type Evidence, type Step } from "../../lib/demo-state";
+import { CHECKOUT_GAS, checkoutTotal, evidenceIsCovered, parseNear, projectStatus, TESTNET_RPC, type Activity, type DemoState, type Evidence, type Step } from "../../lib/demo-state";
 
 const explorer = "https://testnet.nearblocks.io/txns/";
 const historyKey = "agsurance-testnet-activity";
+const walletPendingKey = (vault: string) => `agsurance-wallet-pending-${vault}`;
+type WalletPending = { query: string; activity: Activity };
 function near(value: string) {
   const digits = value.padStart(25, "0");
   const whole = digits.slice(0, -24);
@@ -14,7 +16,6 @@ function near(value: string) {
 }
 
 export function DemoConsole() {
-  const [observedAt, setObservedAt] = useState(0);
   const [state, setState] = useState<DemoState>();
   const [history, setHistory] = useState<Activity[]>([]);
   const [pending, setPending] = useState<string>();
@@ -25,61 +26,86 @@ export function DemoConsole() {
   const [lossInput, setLossInput] = useState<{ policy: string; hash: string }>();
   const [checkedEvidence, setCheckedEvidence] = useState<{ policy: string; evidence: Evidence }>();
   const [walletConnection, setWalletConnection] = useState<{ wallet: NearWalletBase; role: "owner" | "recovery" }>();
+  const [walletPending, setWalletPending] = useState<WalletPending>();
   const ownerWallet = walletConnection?.role === "owner" ? walletConnection.wallet : undefined;
   const recoveryWallet = walletConnection?.role === "recovery" ? walletConnection.wallet : undefined;
   const connector = useRef<NearConnector | null>(null);
+  const requestId = useRef(0);
+  const latestSnapshot = useRef(0);
 
-  useEffect(() => {
-    try { setHistory(JSON.parse(localStorage.getItem(historyKey) ?? "[]") as Activity[]); } catch { /* New history is safe. */ }
-    void refresh();
+  const acceptSnapshot = useCallback((id: number, snapshot: DemoState) => {
+    if (id < latestSnapshot.current) return;
+    latestSnapshot.current = id;
+    setState(previous => previous?.vault === snapshot.vault && (previous.blockHeight ?? 0) > (snapshot.blockHeight ?? 0)
+      ? previous : snapshot);
   }, []);
 
   const liveCoverage = !!state?.coverage;
   useEffect(() => {
     if (!liveCoverage || pending) return;
     const controller = new AbortController();
+    let polling = false;
     const timer = setInterval(async () => {
+      if (polling) return;
+      polling = true;
+      const id = ++requestId.current;
       try {
         const response = await fetch("/api/demo", { cache: "no-store", signal: controller.signal });
         if (response.ok) {
           const snapshot = await response.json() as DemoState;
           if (!controller.signal.aborted) {
-            setState(snapshot);
-            setObservedAt(Date.now());
+            acceptSnapshot(id, snapshot);
           }
         }
       } catch { /* Keep the last confirmed state when a poll fails. */ }
+      finally { polling = false; }
     }, 5000);
     return () => {
       clearInterval(timer);
       controller.abort();
     };
-  }, [liveCoverage, pending]);
+  }, [acceptSnapshot, liveCoverage, pending]);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
+    const id = ++requestId.current;
     try {
       const response = await fetch("/api/demo", { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
-      setState(data as DemoState);
-      setObservedAt(Date.now());
+      acceptSnapshot(id, data as DemoState);
+      try {
+        const saved = localStorage.getItem(walletPendingKey(data.vault));
+        if (saved) setWalletPending(JSON.parse(saved) as WalletPending);
+      } catch { /* The current session can still reconcile. */ }
       setError(undefined);
     } catch (problem) { setError((problem as Error).message); }
+  }, [acceptSnapshot]);
+
+  useEffect(() => {
+    try { setHistory(JSON.parse(localStorage.getItem(historyKey) ?? "[]") as Activity[]); } catch { /* New history is safe. */ }
+    void refresh();
+  }, [refresh]);
+
+  function remember(activity: Activity) {
+    const next = [activity, ...history.filter(entry => entry.hash !== activity.hash)];
+    setHistory(next);
+    try { localStorage.setItem(historyKey, JSON.stringify(next)); } catch { /* Keep the current session visible. */ }
   }
 
-  async function run(step: Step, label: string, key?: string) {
+  async function run(step: Step | "reconcile", label: string, key?: string) {
+    const id = ++requestId.current;
     setPending(label);
     setError(undefined);
     try {
       const response = await fetch("/api/demo", {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ step, publicKey: key, mandate, lossTx }),
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+          step, publicKey: key, mandate, lossTx, expectedPolicyId: policy?.id ?? null, expectedCheckoutId: checkout?.policy_id ?? null,
+        }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
-      const next = [result.activity as Activity, ...history];
-      setHistory(next);
-      setState(result.state as DemoState);
-      try { localStorage.setItem(historyKey, JSON.stringify(next)); } catch { /* Keep the current session visible. */ }
+      remember(result.activity as Activity);
+      acceptSnapshot(id, result.state as DemoState);
     } catch (problem) {
       await refresh();
       setError((problem as Error).message);
@@ -110,7 +136,29 @@ export function DemoConsole() {
     finally { setPending(undefined); }
   }
 
-  async function walletAction(step: Exclude<Step, "loss" | "submit" | "review1" | "review2" | "review3" | "pay" | "escalate">, label: string) {
+  async function confirmWalletAction(entry: WalletPending) {
+    const id = ++requestId.current;
+    const response = await fetch(`/api/demo?${entry.query}`, { cache: "no-store" });
+    const data = await response.json();
+    if (response.ok || data.code === "transaction_failed" || data.code === "transaction_mismatch") {
+      setWalletPending(undefined);
+      try { localStorage.removeItem(walletPendingKey(entry.activity.vault!)); } catch { /* Keep the current session usable. */ }
+    }
+    if (!response.ok) throw new Error(data.error);
+    acceptSnapshot(id, data as DemoState);
+    remember(entry.activity);
+  }
+
+  async function checkWalletAction() {
+    if (!walletPending) return;
+    setPending("Check wallet transaction");
+    setError(undefined);
+    try { await confirmWalletAction(walletPending); }
+    catch (problem) { setError((problem as Error).message); }
+    finally { setPending(undefined); }
+  }
+
+  async function walletAction(step: Exclude<Step, "loss" | "submit" | "review1" | "review2" | "review3" | "pay" | "escalate" | "close">, label: string) {
     if (!state) return;
     const recovery = ["pause", "recover", "premium-refund", "recovery-claim"].includes(step);
     const wallet = recovery ? recoveryWallet : ownerWallet;
@@ -120,8 +168,8 @@ export function DemoConsole() {
       return;
     }
     const methods = {
-      buy: { methodName: "buy_policy", args: mandate ?? {}, deposit: checkoutTotal(state) },
-      refund: { methodName: "retry_checkout_refund", args: {}, deposit: "0" },
+      buy: { methodName: "buy_policy", args: { ...(mandate ?? {}), expected_policy_id: state.policy?.id ?? 0 }, deposit: checkoutTotal(state) },
+      refund: { methodName: "retry_checkout_refund", args: { policy_id: state.checkout?.policy_id }, deposit: "0" },
       connect: {
         methodName: "connect_agent",
         args: { policy_id: state.policy?.id, public_key: publicKey.trim() },
@@ -149,18 +197,16 @@ export function DemoConsole() {
       if (typeof hash === "string") {
         const query = new URLSearchParams({ owner_tx: hash, method: methods[step].methodName });
         if (state.policy && (recovery || step === "connect" || step === "revoke")) query.set("policy_id", String(state.policy.id));
+        if (step === "refund" && state.checkout) query.set("policy_id", String(state.checkout.policy_id));
         if (step === "connect") query.set("public_key", publicKey.trim());
         if (step === "buy" && mandate) {
           query.set("supplier", mandate.supplier);
           query.set("limit", mandate.limit);
         }
-        const response = await fetch(`/api/demo?${query}`, { cache: "no-store" });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error);
-        setState(data as DemoState);
-        const next = [{ label, actor: signer ?? "Owner wallet", hash, policyId: state.policy?.id, vault: state.vault }, ...history];
-        setHistory(next);
-        try { localStorage.setItem(historyKey, JSON.stringify(next)); } catch { /* Keep the current session visible. */ }
+        const entry = { query: query.toString(), activity: { label, actor: signer ?? "Owner wallet", hash, policyId: state.policy?.id, vault: state.vault } };
+        setWalletPending(entry);
+        try { localStorage.setItem(walletPendingKey(state.vault), JSON.stringify(entry)); } catch { /* Keep the current session usable. */ }
+        await confirmWalletAction(entry);
       } else {
         await refresh();
       }
@@ -185,6 +231,11 @@ export function DemoConsole() {
   const policy = state?.policy;
   const incident = state?.incident?.policy_id === policy?.id ? state?.incident : null;
   const status = policy?.phase ?? "No policy";
+  const model = state && (state.status ?? projectStatus(state));
+  const ready = (step: Step) => model?.actions[step] === "available";
+  const transactionPending = model?.pendingTransaction;
+  const externalPending = walletPending?.activity.vault === state?.vault ? walletPending : undefined;
+  const actionPending = !!pending || !!transactionPending || !!externalPending;
   const supplier = supplierInput ?? state?.suggestedSupplier ?? "";
   const limit = parseNear(limitInput);
   const mandate = state?.max_supplier_limit && supplier.endsWith(".testnet") && limit &&
@@ -198,6 +249,7 @@ export function DemoConsole() {
   const evidence = policy?.evidence ?? (checkedEvidence?.policy === policyKey &&
     checkedEvidence.evidence.transaction_hash === lossTx ? checkedEvidence.evidence : undefined);
   const canReview = !policy?.mandate || !!evidence;
+  const rejectEvidence = !!state && !!evidence && !evidenceIsCovered(state, evidence);
   const checkout = state?.checkout;
   const checkoutStatus = checkout ? {
     Booking: "Checking reserve capacity",
@@ -212,25 +264,33 @@ export function DemoConsole() {
   const capacityFull = !!reserveStatus && !!state && BigInt(reserveStatus.available) < BigInt(state.limit);
   const reviewDeadline = policy?.review_deadline;
   const coverage = state?.coverage;
-  const policyStatus = status === "Paid" ? "Reimbursed" : status === "Active" && coverage
-    ? coverage.retired ? "Retired" : coverage.paused ? "Paused" : coverage.active ? "Active" : "Coverage inactive"
+  const policyStatus = status === "Paid" ? "Reimbursed" : status === "CheckingEvidence" ? "Checking claim evidence"
+    : status === "Closing" ? "Releasing reserve" : status === "Rejected" ? "Claim rejected" : status === "Active" && coverage
+    ? model?.coverage === "retired" ? "Retired" : model?.coverage === "ended" ? "Coverage ended" : coverage.paused ? "Paused" : coverage.active ? "Active" : "Coverage inactive"
     : status;
   const recoveryReady = !!recoveryWallet || !!state?.demoRecovery;
   const ownerReady = !!ownerWallet || !!state?.demoOwner;
-  const connectEnabled = !!state?.agent_funding && status === "Active" && !state.agent && !coverage?.paused;
   const keyLooksValid = /^ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(publicKey.trim());
   const votes = policy?.votes ?? 0;
   const voteCount = [1, 2, 4].filter(mask => votes & mask).length;
   const button = (step: Step, label: string, enabled: boolean) => (
-    <button type="button" disabled={!!pending || !enabled} onClick={() => void run(step, label)}>{label}</button>
+    <button type="button" disabled={actionPending || !enabled || !ready(step)} onClick={() => void run(step, label)}>{label}</button>
   );
 
   return (
     <>
       <div className="demo-status" aria-live="polite">
-        <span>{pending ? `${pending} · Waiting for NEAR finality…` : state ? "Connected to NEAR testnet" : "Checking demo configuration…"}</span>
+        <span>{pending ? `${pending} · Waiting for NEAR finality…` : state ? "Last confirmed NEAR testnet snapshot" : "Checking demo configuration…"}</span>
         <button type="button" onClick={() => void refresh()} disabled={!!pending}>Refresh</button>
       </div>
+      {transactionPending && <p className="demo-status">
+        <a href={`${explorer}${transactionPending.transactionHash}`} target="_blank" rel="noreferrer">View pending transaction ↗</a>
+        <button type="button" disabled={!!pending} onClick={() => void run("reconcile", "Check transaction")}>Check transaction</button>
+      </p>}
+      {externalPending && <p className="demo-status">
+        <a href={`${explorer}${externalPending.activity.hash}`} target="_blank" rel="noreferrer">View wallet transaction ↗</a>
+        <button type="button" disabled={!!pending} onClick={() => void checkWalletAction()}>Check wallet transaction</button>
+      </p>}
       {error && <p role="alert" className="demo-error">{error}</p>}
       <div className="demo-grid">
         <section className="demo-panel" aria-labelledby="agent-console">
@@ -239,8 +299,8 @@ export function DemoConsole() {
           <p className="demo-description">The fixture records a test loss. A connected agent submits the claim from its own CLI.</p>
           {state?.agent_funding && <p className="demo-id">Vault · {state.vault}</p>}
           <div className="demo-actions">
-            {button("loss", "Simulate 0.3 NEAR loss", policy?.phase === "Active" && !incident && !coverage?.paused && (coverage?.active ?? true))}
-            {!state?.owner && button("submit", "Submit claim", policy?.phase === "Active" && !!incident)}
+            {button("loss", "Simulate 0.3 NEAR loss", true)}
+            {!state?.owner && button("submit", "Submit claim", true)}
           </div>
           {incident && <p className="demo-description">Wallet incident recorded at block {incident.block_height.toLocaleString()}.</p>}
           {state?.agent?.connected && (
@@ -274,11 +334,14 @@ export function DemoConsole() {
             <div className="demo-agent">
               <h3>Premium and coverage</h3>
               <p>{coverage.retired ? "Wallet retired" : status === "Paid" ? "Claim paid · demo policy complete" : coverage.renewal_pending ? "Premium confirmation pending" :
-                coverage.active ? `Coverage active · period ${(coverage.current_window ?? 0) + 1} of 4` : "Coverage inactive · supplier payments paused"}</p>
+              model?.coverage === "ended" ? "Coverage ended · supplier payments stopped" :
+              coverage.active ? `Coverage active · period ${(coverage.current_window ?? 0) + 1} of 4` : "Coverage inactive · supplier payments paused"}</p>
+              {model?.filingDeadline && ["Active", "Rejected", "Closing"].includes(status) &&
+                <p className="demo-description">Claim filing deadline · {new Date(model.filingDeadline * 1000).toLocaleString()}</p>}
               {!coverage.retired && coverage.next_boundary && <p className="demo-description">Current period ends {new Date(coverage.next_boundary * 1000).toLocaleString()}.</p>}
               {!coverage.retired && coverage.current_window != null && policy.windows?.[coverage.current_window + 1] != null &&
                 <p className="demo-description">Period {coverage.current_window + 2} premium confirmed.</p>}
-              {coverage.payable_window != null && !coverage.renewal_pending && <p className="demo-description">
+              {coverage.payable_window != null && !coverage.renewal_pending && !coverage.paused && <p className="demo-description">
                 Period {coverage.payable_window + 1} premium is due. The agent can pay {near(state.premium)} from the wallet.
                 {state.operatingBalance && BigInt(state.operatingBalance) < BigInt(state.premium) && " Top up the operating balance before retrying."}
               </p>}
@@ -300,7 +363,7 @@ export function DemoConsole() {
           </dl>
           {reserveDeficit && <p className="demo-error">Reserve shortfall of {near(reserveStatus.shortfall)}. New policies and payouts are paused. Claims can still be filed and reviewed.</p>}
           {!reserveDeficit && capacityFull && <p className="demo-description">The reserve has no capacity for another policy.</p>}
-          {state?.max_supplier_limit && !checkout && (!policy || policy.phase === "Paid") && (
+          {state?.max_supplier_limit && !checkout && (!policy || policy.phase === "Paid" || policy.phase === "Closed") && (
             <div className="demo-mandate">
               <label htmlFor="supplier">Approved supplier account</label>
               <input id="supplier" value={supplier} onChange={event => setSupplier(event.target.value)} />
@@ -312,12 +375,13 @@ export function DemoConsole() {
           {policy?.mandate && <p className="demo-id">Policy mandate · {policy.mandate.supplier} · {near(policy.mandate.limit)}</p>}
           <div className="demo-actions">
             {state?.owner && !ownerWallet && <button type="button" disabled={!!pending} onClick={() => void connectWallet("owner")}>Connect owner wallet</button>}
-            {state && <button type="button" disabled={!!pending || !ownerReady || !!checkout || capacityFull || !!coverage?.paused || (!!state.max_supplier_limit && !mandate) || (!!policy && policy.phase !== "Paid")}
+            {state && <button type="button" disabled={actionPending || !ownerReady || !ready("buy") || (!!state.max_supplier_limit && !mandate)}
               onClick={() => void walletAction("buy", state.wallet_funding ? "Fund wallet and buy policy" : "Buy policy")}>
               {state.wallet_funding ? "Fund wallet and buy policy" : ownerWallet ? "Buy policy" : "Buy demo policy"}
             </button>}
-            {(checkout?.phase === "RefundAvailable" || checkout?.phase === "ReleaseAvailable") && <button type="button" disabled={!!pending || !ownerReady}
+            {ready("refund") && <button type="button" disabled={actionPending || !ownerReady}
               onClick={() => void walletAction("refund", "Retry checkout refund")}>Retry checkout refund</button>}
+            {ready("close") && button("close", status === "Closing" ? "Check or retry reserve release" : "Close policy and release reserve", true)}
           </div>
           {state?.wallet_funding && <p className="demo-id">Agent wallet · {state.wallet}</p>}
           {state?.owner && <p className="demo-id">{ownerWallet ? "Connected owner" : state.demoOwner ? "Local demo signer" : "Policy owner"} · {state.owner}</p>}
@@ -328,14 +392,14 @@ export function DemoConsole() {
                 <>
                   <p>Agent connected</p>
                   <p className="demo-id">{state.agent.account_id}</p>
-                  <button type="button" disabled={!!pending || !ownerReady} onClick={() => void walletAction("revoke", "Revoke agent")}>Revoke agent</button>
+                  <button type="button" disabled={actionPending || !ownerReady || !ready("revoke")} onClick={() => void walletAction("revoke", "Revoke agent")}>Revoke agent</button>
                 </>
-              ) : state.agent ? <p>Waiting for account creation.</p> : connectEnabled ? (
+              ) : state.agent ? <p>Waiting for account creation.</p> : ready("connect") ? (
                 <form onSubmit={event => { event.preventDefault(); void walletAction("connect", "Connect Agent"); }}>
                   <p className="demo-description">Run <code>bun scripts/agent.ts init .agsurance-agent.key</code> in the agent runtime, then paste its public key. The owner funds {near(state.agent_funding)} for the agent account.</p>
                   <label htmlFor="agent-public-key">Agent public key</label>
                   <input id="agent-public-key" autoComplete="off" spellCheck={false} placeholder="ed25519:…" value={publicKey} onChange={event => setPublicKey(event.target.value)} />
-                  <button type="submit" disabled={!!pending || !ownerReady || !keyLooksValid}>Connect Agent</button>
+                  <button type="submit" disabled={actionPending || !ownerReady || !keyLooksValid}>Connect Agent</button>
                 </form>
               ) : <p className="demo-description">Activate a policy to connect an agent.</p>}
             </section>
@@ -348,13 +412,13 @@ export function DemoConsole() {
               {coverage.paused && <p>{coverage.retired ? "Recovered · wallet retired" : coverage.recovery_pending ? "Recovery pending" : "Agent access stopped"}</p>}
               <div className="demo-actions">
                 {!recoveryWallet && <button type="button" disabled={!!pending} onClick={() => void connectWallet("recovery")}>Connect recovery wallet</button>}
-                <button type="button" disabled={!!pending || !recoveryReady || coverage.paused || !!checkout || !!(state.agent && !state.agent.connected)}
+                <button type="button" disabled={actionPending || !recoveryReady || !ready("pause")}
                   onClick={() => void walletAction("pause", "Stop agent access")}>Stop agent access</button>
-                <button type="button" disabled={!!pending || !recoveryReady || !coverage.paused || coverage.retired || coverage.recovery_pending || coverage.renewal_pending}
+                <button type="button" disabled={actionPending || !recoveryReady || !ready("recover")}
                   onClick={() => void walletAction("recover", "Recover wallet balance")}>Recover wallet balance</button>
-                {coverage.unused_premium && <button type="button" disabled={!!pending || !recoveryReady}
+                {ready("premium-refund") && <button type="button" disabled={actionPending || !recoveryReady}
                   onClick={() => void walletAction("premium-refund", "Refund unused premium")}>Refund unused premium</button>}
-                {coverage.paused && !!incident && status === "Active" && <button type="button" disabled={!!pending || !recoveryReady}
+                {ready("recovery-claim") && <button type="button" disabled={actionPending || !recoveryReady}
                   onClick={() => void walletAction("recovery-claim", "File claim from recovery account")}>File claim from recovery account</button>}
               </div>
             </section>
@@ -384,18 +448,18 @@ export function DemoConsole() {
           {evidence && (
             <p className="demo-description">
               Verified transfer of {near(evidence.amount)} to {evidence.recipient} at block {evidence.block_height.toLocaleString()}.
+              {rejectEvidence && " The transfer occurred outside paid coverage."}
               <br /><a className="demo-proof" href={`${explorer}${evidence.transaction_hash}/receipts`} target="_blank" rel="noreferrer">View loss receipt ↗</a>
             </p>
           )}
           <div className="demo-actions">
-            {button("review1", "Approve as reviewer 1", status === "InReview" && !(votes & 1) && canReview)}
-            {button("review2", "Approve as reviewer 2", status === "InReview" && !(votes & 2) && canReview)}
-            {state?.reserve_pool && button("review3", "Approve as reviewer 3", status === "InReview" && !(votes & 4) && canReview)}
+            {button("review1", `${rejectEvidence ? "Reject" : "Approve"} as reviewer 1`, canReview)}
+            {button("review2", `${rejectEvidence ? "Reject" : "Approve"} as reviewer 2`, canReview)}
+            {state?.reserve_pool && button("review3", `${rejectEvidence ? "Reject" : "Approve"} as reviewer 3`, canReview)}
             {status === "InReview" && reviewDeadline && !policy?.escalated_at
-              ? button("escalate", "Record escalation", observedAt >= reviewDeadline * 1000)
+              ? button("escalate", "Record escalation", true)
               : null}
-            {button("pay", status === "Paying" ? "Check or retry payout" : "Pay claim",
-              !reserveDeficit && (status === "Approved" || (!!state?.reserve_pool && status === "Paying")))}
+            {button("pay", status === "Paying" ? "Check or retry payout" : "Pay claim", true)}
           </div>
           {state && <p className="demo-id">Recovery account · {state.beneficiary}</p>}
           {state && policy && !["Active", "CheckingEvidence"].includes(policy.phase) &&

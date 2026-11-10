@@ -56,11 +56,17 @@ To use an external owner wallet, set `AGSURANCE_POLICY_OWNER` to a funded named 
 
 The CLI reads and signs directly against NEAR testnet RPC. The owner can revoke the policy's agent grant, which denies new submissions from the old key. The demo review accounts and the loss fixture are provided by the local console. The dashboard stores its confirmed payout link by vault and policy in the ignored `.agsurance-demo` directory. Provision fresh testnet contracts to use the shared reserve. Wallet, vault, and pool accounts are deployed without access keys. Their state is incompatible with the previous demo deployment.
 
+`agent.ts status VAULT` and `GET /api/demo` include a shared `status` object alongside the original fields. It reports the policy and checkout IDs, coverage, the filing deadline, action availability, and any transaction awaiting confirmation. The local dashboard sends the displayed policy ID with each signed action. Local API callers should send `expectedPolicyId` (use `null` before the first purchase) and `expectedCheckoutId` for a checkout refund.
+
+When the CLI returns `pending_confirmation` (exit code 2), run `bun scripts/agent.ts reconcile VAULT` from the same working directory. The console offers **Check transaction** for its local signer. Both check the original hash before allowing a new action. If NEAR has no record of it, they can rebroadcast the same signed transaction. The local journal lives in the ignored `.agsurance-demo` directory.
+
 ### Renew and recover
 
 The owner buys period 1 at checkout. A connected agent can schedule `bun scripts/agent.ts renew <vault.testnet> <key-file>` in its own runtime (for example, once every 5 minutes). The command skips when there is no premium due. The wallet pays 0.01 NEAR once per period. A late payment resumes coverage from confirmation and keeps the same policy limit. A period that has already ended cannot be backdated. The demo charges the full premium for a late payment.
 
 There are four 7-day periods by default. Set `AGSURANCE_TEST_WINDOW_SECONDS=90` before fresh setup for a shorter testnet demo. The dashboard shows the deadline and pauses supplier payments if coverage lapses. If the wallet needs funds, call its payable `top_up` method with the amount to add and rerun renewal. Plain account transfers are outside the tracked operating balance.
+
+The claim filing window closes 48 hours after the policy term ends or the wallet retires early. Once it closes, **Close policy and release reserve** returns unused capacity to the pool. Anyone can call `close_policy` with the policy ID. An open claim keeps its allocation until settlement or rejection. Reviewers use the transfer receipt's finalized block time to determine which paid window covered it.
 
 For recovery, use **Stop agent access** and then **Recover wallet balance** as the registered recovery account. That account can also sign the same calls directly on NEAR, using `pause_wallet` and `recover_wallet` with `{"policy_id":1}` (use the actual ID). The first call revokes the agent grant immediately. Wait for any previously scheduled funds transfer to settle before retrying recovery. The second moves the remaining operating balance to the registered recovery account and retires the wallet. Claim reimbursement is a separate transfer from the shared reserve. If loss was recorded before retirement during paid coverage, use **File claim from recovery account**. If a future period was prepaid, use **Refund unused premium**.
 
@@ -71,6 +77,10 @@ The dashboard shows assets, allocations across policies, available capacity, and
 A failed transfer retains the approved claim and its allocation. Retry through **Pay claim** or **Check or retry payout**. When demo collateral is impaired, the dashboard shows the shortfall and pauses new policies and payouts until the pool is fully backed again. Claims can still be filed and reviewed.
 
 **Record escalation** becomes available after 72 hours without quorum. Set `AGSURANCE_TEST_REVIEW_SECONDS=15` before fresh deployment to shorten the review clock. Escalation records a timestamp and preserves the claim and allocation for the panel.
+
+### Live regression checks
+
+Provision a dedicated fresh setup with `AGSURANCE_TEST_WINDOW_SECONDS=30` and `AGSURANCE_TEST_CLAIM_SECONDS=15`. Make sure the generated owner has at least 0.95 testnet NEAR left after setup. From the directory with that setup's `.env.local`, run `AGSURANCE_RUN_LIVE_TESTS=1 bun scripts/test-state-machines.ts` using the script's absolute path if needed. It sends testnet transactions and takes several minutes. It exercises expiry, stale policy actions, a lost response after a supplier payment, and receipt-time coverage. When the live loss lands inside the paid window it also checks payout reconciliation and proof storage.
 
 The process cards adapt [React Bits SpotlightCard](https://github.com/DavidHDev/react-bits/blob/c83b5e7e026f003af33ff9ebc3d93afb5c86ad22/src/ts-tailwind/Components/SpotlightCard/SpotlightCard.tsx). See [the upstream license](licenses/react-bits.md).
 
