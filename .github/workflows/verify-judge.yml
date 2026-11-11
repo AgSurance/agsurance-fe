@@ -1,0 +1,36 @@
+name: Verify AgSurance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sandbox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: agsurance-fe
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: agsurance-fe
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: AgSurance/agsurance-sc
+          ref: f366a2cea2383e2142b4f86b92cf833f3d086c5f
+          path: agsurance-sc
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: agsurance-fe/package.json
+      - name: Select Rust toolchain
+        run: rustup default 1.96.0
+      - name: Build and verify in NEAR Sandbox
+        run: bun run verify:judge

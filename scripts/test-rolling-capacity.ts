@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { KeyPair } from "@near-js/crypto";
 import { baseEncode } from "@near-js/utils";
 
@@ -13,6 +14,7 @@ const sandbox = await Sandbox.start({ config: { additionalAccounts: [root] } });
 try {
   process.env.AGSURANCE_TESTNET_RPC = sandbox.rpcUrl;
   const { actions, call, milliNear, readDashboard, rpc, transact, view, TransactionFailedError } = await import("../src/lib/demo-near");
+  const { verifyLossEvidence } = await import("../src/lib/claim-evidence");
   const { policyQuote } = await import("../src/app/demo/policy-quote");
   const { fullBalanceEstimate } = await import("../src/lib/coverage-estimate");
   const signer = { id: root.accountId as string, key: root.privateKey as string };
@@ -81,6 +83,24 @@ try {
       expected_policy_id: 0, supplier: supplier.id, limit: amount(50), coverage_limit: amount(limit), wallet_funding: amount(funding),
     }, (BigInt(amount(funding)) + BigInt(amount(limit)) / BigInt(40)).toString(), 170);
 
+  // Start a short policy while the shared-reserve checks run. Its first paid window will lapse.
+  const shortWindowSeconds = 30;
+  const shortPool = await account("short-pool", "reserve_pool", { operator: signer.id });
+  const shortWallet = await account("short-wallet", "agent_wallet", {
+    vault: "short-vault.demo.testnet", runner: signer.id, recipient: lossRecipient.id,
+  });
+  const shortVault = await account("short-vault", "coverage_vault", {
+    owner: owner3.id, beneficiary: owner3.id, wallet: shortWallet.id, runner: signer.id,
+    reviewers: [r1.id, r2.id, "r3.demo.testnet"], reserve_pool: shortPool.id,
+    test_window_seconds: shortWindowSeconds,
+  });
+  await send(signer, shortPool.id, "register_vault", { vault: shortVault.id, beneficiary: owner3.id });
+  await send(signer, shortPool.id, "fund_reserve", {}, amount(1_000));
+  await send(owner3, shortVault.id, "buy_policy", {
+    supplier: supplier.id, limit: amount(50), expected_policy_id: 0,
+  }, amount(360), 170);
+  assert.equal((await readDashboard(shortVault.id)).coverage?.active, true);
+
   await send(provider1, pool.id, "fund_capital_pilot", {}, amount(400));
   assert.equal((await status()).available, amount(300));
   const quoted = await snapshot(owner1.id);
@@ -91,6 +111,7 @@ try {
   assert.equal((await status()).locked, amount(180));
   await assert.rejects(buy(owner2, b.vault, 200, 500), TransactionFailedError);
   assert.equal((await readDashboard(b.vault)).policy, null);
+  console.log("PASS: Checkout rejected when liquid capacity was insufficient.");
 
   await send(provider2, pool.id, "fund_capital_pilot", {}, amount(600));
   assert.equal((await status()).available, amount(720));
@@ -100,6 +121,7 @@ try {
   await buy(owner2, b.vault, 200, 0);
   assert.equal((await readDashboard(b.vault)).operatingBalance, amount(500));
   assert.equal((await status()).locked, amount(380));
+  console.log("PASS: A new deposit opened capacity and the second policy activated.");
   await assert.rejects(buy(owner3, c.vault, 320, 500), TransactionFailedError);
 
   // Wallet funding alone does not update policy terms.
@@ -129,7 +151,6 @@ try {
   await send(owner1, a.vault, "connect_agent", { policy_id: 1, public_key: key.getPublicKey().toString() }, amount(100), 90);
   const agent = { id: (await readDashboard(a.vault)).agent!.account_id, key: key.toString() };
   await send(agent, a.vault, "submit_claim", { policy_id: 1 });
-  const { verifyLossEvidence } = await import("../src/lib/claim-evidence");
   const evidence = await verifyLossEvidence({ ...(await snapshot(owner1.id)).dashboard!, runner: signer.id }, loss.hash);
   await send(r1, a.vault, "approve_claim", { policy_id: 1, evidence });
   await send(r2, a.vault, "approve_claim", { policy_id: 1, evidence });
@@ -143,6 +164,7 @@ try {
   assert.equal((await status()).locked, amount(200));
   assert.equal((await status()).assets, amount(820));
   assert.equal((await snapshot(owner1.id)).poolCapacity!.group_remaining, amount(490));
+  console.log("PASS: The limit rose from 0.18 to 0.42 NEAR, but the earlier loss paid 0.18 NEAR.");
 
   const equity = async (id: string) => (await snapshot(id)).capital!.account_share!.equity!;
   const beforeShares = [await equity(provider1.id), await equity(provider2.id)];
@@ -150,8 +172,42 @@ try {
   assert.deepEqual([await equity(provider1.id), await equity(provider2.id)], beforeShares);
   assert.equal(await equity(provider3.id), amount(820));
   assert.equal(fullBalanceEstimate("1000")!.premium.toString(), amount(23340));
-  console.log("Shared reserve, failed checkout refund, group and policy caps, paid endorsement, historical payout, and fair post-claim share issuance passed.");
-  console.log("Sandbox payout receipt transaction:", paid.hash);
+  console.log("PASS: New capital bought shares at post-claim equity without reducing prior providers' equity.");
+  console.log("Local Sandbox payout transaction:", paid.hash);
+
+  const expiresBy = Date.now() + 35_000;
+  while ((await readDashboard(shortVault.id)).coverage?.active) {
+    assert(Date.now() < expiresBy, "The short paid coverage window did not lapse.");
+    await delay(500);
+  }
+  const uncoveredLoss = await send(signer, shortWallet.id, "simulate_loss", { policy_id: 1 });
+  await send(owner3, shortVault.id, "submit_claim", { policy_id: 1 });
+  const filed = await readDashboard(shortVault.id);
+  assert.equal(filed.policy?.phase, "InReview");
+  const uncoveredEvidence = await verifyLossEvidence({
+    ...filed, vault: shortVault.id, wallet: shortWallet.id, runner: signer.id,
+    incident: filed.incident ?? null, demoOwner: true,
+  }, uncoveredLoss.hash);
+  const paidWindowStart = filed.policy?.windows?.[0];
+  assert(paidWindowStart != null && uncoveredEvidence.block_timestamp_ms !== undefined);
+  assert(uncoveredEvidence.block_timestamp_ms >= (paidWindowStart + shortWindowSeconds) * 1_000);
+
+  const reserveBefore = filed.reserveStatus;
+  assert(reserveBefore);
+  assert.equal(reserveBefore.assets, amount(1_000));
+  assert.equal(reserveBefore.locked, amount(400));
+  await send(r1, shortVault.id, "reject_claim", { policy_id: 1, evidence: uncoveredEvidence });
+  assert.equal((await readDashboard(shortVault.id)).policy?.phase, "InReview");
+  await send(r2, shortVault.id, "reject_claim", { policy_id: 1, evidence: uncoveredEvidence });
+  assert.equal((await readDashboard(shortVault.id)).policy?.phase, "Rejected");
+  await assert.rejects(
+    send(signer, shortVault.id, "pay_claim", { policy_id: 1 }),
+    TransactionFailedError,
+  );
+  const afterPayoutAttempt = await readDashboard(shortVault.id);
+  assert.equal(afterPayoutAttempt.policy?.phase, "Rejected");
+  assert.deepEqual(afterPayoutAttempt.reserveStatus, reserveBefore);
+  console.log("PASS: Two reviewers rejected a loss after paid coverage lapsed. The payout was blocked and reserve assets stayed at 1.00 NEAR.");
 } finally {
   await sandbox.tearDown();
 }

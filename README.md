@@ -2,7 +2,7 @@
 
 AgSurance gives AI agents a payment account with loss coverage on NEAR testnet. The owner chooses a supplier and sets a spending limit. The agent can pay that supplier from its own runtime. If the demo records a loss, reviewers examine the transfer before a separate reserve pays the claim.
 
-[Try with your testnet wallet](https://agsurance-judge-preview.vercel.app/demo#manual-demo) · [0.18 NEAR payout](https://testnet.nearblocks.io/txns/7bNezR6hT22Bm2MCeSPc59BC2ehBaYSExTQdqn98MRYP/receipts) · [Inspect the CLI run](https://agsurance-judge-preview.vercel.app/demo#cli-run) · [Try a new run with an invite](https://agsurance-judge-preview.vercel.app/demo#demo-invite) · [Read the Rust contracts](https://github.com/AgSurance/agsurance-sc)
+[Inspect the CLI run](https://agsurance-judge-preview.vercel.app/demo#cli-run) · [Verify the historical limit](#verify-the-018-near-historical-payout) · [Run the verification](#verify-locally) · [Try with your testnet wallet](https://agsurance-judge-preview.vercel.app/demo#manual-demo) · [Read the Rust contracts](https://github.com/AgSurance/agsurance-sc)
 
 ## Verify the 0.25 NEAR CLI replay
 
@@ -21,11 +21,37 @@ Compare the approved supplier `supplier.agsurance-7910a4d8.testnet` with the sim
 
 For a new browser run, use an invite on the same demo page. To connect your own agent and run the CLI, follow the local setup below.
 
+## Verify the 0.18 NEAR historical payout
+
+This is a separate NEAR testnet run on policy `v-1cba0c6bad2c3e0cea5b.f.agmaker-dd6ef8.testnet/1`. A [capital deposit](https://testnet.nearblocks.io/txns/81QPfbkG2uhDAKc5HL4NhUCqMJijAd1wkHqdfoGQQ49U/receipts) opened capacity for a previously blocked checkout.
+
+[Open the timeline in the demo](https://agsurance-judge-preview.vercel.app/demo#historical-limit)
+
+| Step | What to check | Evidence |
+| --- | --- | --- |
+| Record a simulated loss | The 0.30 NEAR transfer executed in block **277,218,273** while the payout limit was **0.18 NEAR**. | [Original checkout](https://testnet.nearblocks.io/txns/8fTSvqtdGgnu8oSRwoVD9VvESmmonPuQ8PAqz64ZHEco/receipts) · [Loss receipt](https://testnet.nearblocks.io/txns/BymqcFtbnvv1By82NaRvmUegQsc9p5DdZDdtB4z8jDAJ/receipts) · [Loss block](https://testnet.nearblocks.io/blocks/277218273) |
+| Raise the limit | The vault confirmed **0.42 NEAR** in block **277,218,292**. The contract applies the increase starting at the next block, **277,218,293**. | [Increase receipts](https://testnet.nearblocks.io/txns/CL3ko61db2p4Mw2tZaLEaj9hPWLaXZpW3tipt7CyrkNV/receipts) · [Confirmation callback](https://testnet.nearblocks.io/txns/CL3ko61db2p4Mw2tZaLEaj9hPWLaXZpW3tipt7CyrkNV/execution#2muG7K5oEDzrQ9SuJSCUj9Kh2RjH7tP2yemzG2tUHpsw) · [Effective block](https://testnet.nearblocks.io/blocks/277218293) |
+| File and settle the claim | The agent filed after the increase. Both reviewers voted on the earlier loss, and the reserve paid **0.18 NEAR**. | [Claim](https://testnet.nearblocks.io/txns/J4nvLf47vmy5rfwf2aB1nU2TYXeQ68cK5d5qEGyuqeD6/receipts) · [Reviewer 1](https://testnet.nearblocks.io/txns/AixCayE4YVQJmZHGyg66rgNLEf65574qabX2bYZE8HrK/receipts) · [Reviewer 2](https://testnet.nearblocks.io/txns/8X9joNTVEjpzZs5Vnc3XNb4g7umoEKPBFmu3gPeQGs5t/receipts) · [Payout receipt](https://testnet.nearblocks.io/txns/7bNezR6hT22Bm2MCeSPc59BC2ehBaYSExTQdqn98MRYP/receipts) |
+
+## Verify locally
+
+Install Bun 1.3.10 and Rust 1.96 via rustup. Clone the [contract repo at the revision used by CI](https://github.com/AgSurance/agsurance-sc/tree/f366a2cea2383e2142b4f86b92cf833f3d086c5f) beside this repo as `agsurance-sc`, or set `AGSURANCE_SC_DIR` to its location. From this repo run:
+
+```sh
+bun run verify:judge
+```
+
+The command installs the locked dependencies, builds four contracts and runs the scenario in a local NEAR Sandbox without wallet credentials or testnet transactions. It prints a result for the checkout rejected at insufficient capacity, a deposit that opens capacity, and the payout limited by the earlier policy terms. [GitHub Actions workflow](.github/workflows/verify-judge.yml)
+
+The same test verifies a **rejected claim**. A 0.30 NEAR simulated transfer executes after the paid coverage window ends. Two reviewers reject the claim, the vault refuses the payout, and the test checks that reserve assets are still **1.00 NEAR**. [Reproduce the rejected claim](scripts/test-rolling-capacity.ts)
+
+NEAR Sandbox downloads its binary on first use. If you already have the official 2.13.3 binary, set `NEAR_SANDBOX_BIN_PATH` to its absolute path.
+
 ## Use your own testnet wallet
 
 Open the demo, select **Connect Wallet**, and choose **Buy a policy** or **Provide capital**. Use a funded named testnet wallet to buy a policy. The buyer pays a one-time account storage deposit, then signs the checkout from their wallet. The dashboard displays the exact NEAR funding, premium, payout limit and deductible from the deployed vault. It also shows the agent setup commands after purchase.
 
-The public judge Preview uses the shared testnet reserve. A second capital deposit opened capacity for a previously blocked checkout. The first policy kept its 0.18 NEAR limit until the owner raised it to 0.42 NEAR. The reserve paid 0.18 NEAR for a covered loss that occurred before the increase. [Capital deposit](https://testnet.nearblocks.io/txns/81QPfbkG2uhDAKc5HL4NhUCqMJijAd1wkHqdfoGQQ49U/receipts) · [Limit increase](https://testnet.nearblocks.io/txns/CL3ko61db2p4Mw2tZaLEaj9hPWLaXZpW3tipt7CyrkNV/receipts) · [0.18 NEAR payout](https://testnet.nearblocks.io/txns/7bNezR6hT22Bm2MCeSPc59BC2ehBaYSExTQdqn98MRYP/receipts)
+The public judge Preview uses the shared testnet reserve described in the [historical payout run](#verify-the-018-near-historical-payout).
 
 The landing page shows illustrative 28-day premium scenarios with zero deductible. Checkout shows the terms enforced by the selected vault.
 
@@ -36,8 +62,6 @@ For a fresh shared-reserve deployment, set `AGSURANCE_MANUAL_FACTORY` to the fac
 - **Buy coverage:** Enter the funds you want to add and choose a payout limit. The maximum quote uses the wallet balance after the deductible, free liquid capital, the per-policy cap, and the remaining risk-group cap. The reserve rechecks capacity at checkout.
 - **Increase an active limit:** Top up the wallet if needed, then approve the premium difference for the current and any already-paid future weeks. The increase takes effect prospectively. The original limit still applies to earlier losses.
 - **Provide capital:** A confirmed deposit in the shared reserve can open more checkout capacity. Providers receive shares at the pool's current value and take on existing obligations. The dashboard shows capital allocated to claims, the buffer, and surplus available for staking. Deposits pause while a payout is in flight or validator funds are being reconciled.
-
-To verify these flows on a local NEAR Sandbox, build the four WASM contracts, make `near-sandbox@0.3.3` available, and run `bun scripts/test-rolling-capacity.ts`. The script defaults to the sibling smart-contract repo's release artifacts and accepts `AGSURANCE_WASM_DIR` and `AGSURANCE_SANDBOX_MODULE` for alternate locations.
 
 ## How the demo works
 
