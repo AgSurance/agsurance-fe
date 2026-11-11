@@ -5,6 +5,8 @@ import { reserveReplayUrl } from "../../lib/demo-links";
 import { demoCookie, hostedDemoEnabled, hostedRecoveryPreview, inviteAccounts } from "../../lib/hosted-demo";
 import { DemoConsole } from "./demo-console";
 import { CliRun } from "./cli-run";
+import { ManualDemo } from "./manual-demo";
+import { manualDemoContracts } from "../../lib/manual-demo";
 import "./demo.css";
 
 export default async function DemoPage({ searchParams }: { searchParams: Promise<{ invite?: string }> }) {
@@ -29,6 +31,7 @@ export default async function DemoPage({ searchParams }: { searchParams: Promise
           ? "Buy a policy, simulate a loss, and follow the claim through to a new payout on NEAR testnet."
           : "Follow a completed CLI run and check its receipts on NEAR testnet."}</p>
       </section>
+      <ManualDemo {...manualDemoContracts()} />
       {live && (
         <div id="live-demo" tabIndex={-1}>
           <DemoConsole hosted={hosted} recoveryPreview={hostedRecoveryPreview()} />

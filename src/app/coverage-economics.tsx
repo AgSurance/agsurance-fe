@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import styles from "./coverage-economics.module.css";
+import { CoverageCalculator } from "./coverage-calculator";
 
 const reserve = 100;
 const buffer = 10;
@@ -33,6 +34,8 @@ export function CoverageEconomics() {
         <h2 id="economics-title">Where the money goes</h2>
         <p>A premium is what you pay for coverage. Capital providers put money into the reserve. See how premiums and payouts affect what they earn.</p>
       </header>
+
+      <CoverageCalculator />
 
       <div className={styles.controls}>
         <fieldset>

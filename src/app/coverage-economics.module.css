@@ -82,3 +82,25 @@
 @media (max-width: 760px) {
   .charts, .outcomes { grid-template-columns: minmax(0, 1fr); }
 }
+
+.calculator {
+  display: grid;
+  gap: 10px;
+  max-width: 44rem;
+  margin: 20px 0 30px;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid currentColor;
+}
+.calculator h3 { margin: 0; }
+.calculator input:not([type="checkbox"]),
+.calculator select {
+  max-width: 20rem;
+  width: 100%;
+  border: 1px solid var(--color-deep-blue);
+  background: white;
+  color: var(--color-deep-blue);
+  padding: 8px 10px;
+}
+.calculator dd { overflow-wrap: anywhere; }
+
+.calculator input[type="checkbox"] { margin-right: 0.35em; accent-color: var(--color-deep-blue); }

@@ -89,3 +89,16 @@
 @media (max-width: 520px) {
   .demo-run-summary { grid-template-columns: 1fr; }
 }
+
+.demo-manual { margin-bottom: 16px; scroll-margin-top: 16px; }
+.demo-manual-button { margin-top: 14px; }
+.demo-manual-flow { margin-top: 16px; border-top: 1px solid var(--dark-line); }
+.demo-manual-fields { display: grid; gap: 10px; max-width: 40rem; margin: 14px 0; }
+.demo-manual-fields label { display: grid; gap: 4px; }
+.demo-manual-fields input { width: 100%; padding: 8px; border: 1px solid var(--dark-line); }
+.demo-manual-fields button { justify-self: start; }
+.demo-manual-amounts { max-width: 44rem; }
+.demo-manual-amounts dd { white-space: normal; overflow-wrap: anywhere; text-align: right; }
+.demo-steps { list-style: decimal; padding-left: 1.5rem; }
+.demo-steps li { margin-bottom: 12px; }
+.demo-manual button[aria-pressed="true"] { color: white; background: var(--color-deep-blue); }

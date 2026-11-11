@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { cliPayoutHash, receiptUrl, reserveReplayUrl } from "../lib/demo-links";
 import { hostedDemoEnabled } from "../lib/hosted-demo";
+import { manualDemoContracts } from "../lib/manual-demo";
 import { CoverageEconomics } from "./coverage-economics";
 
 function ExternalArrow() {
@@ -39,6 +40,7 @@ const features = [
 export default function Home() {
   const hosted = process.env.VERCEL === "1";
   const showLiveLink = !hosted || hostedDemoEnabled();
+  const manualCheckout = !!manualDemoContracts().factory;
 
   return (
     <div className="site" id="top">
@@ -61,9 +63,12 @@ export default function Home() {
               Give your agent an account with spending rules you set. If a wallet flaw lets funds leave against those rules, you can file a claim.
             </p>
             <div className="hero-actions">
-              <Link className="primary-action" href="/demo#cli-run">View the verified CLI run</Link>
+              <Link className="primary-action" href={manualCheckout ? "/demo#manual-demo" : "/demo#cli-run"}>
+                {manualCheckout ? "Try with your testnet wallet" : "View the verified CLI run"}
+              </Link>
             </div>
             <div className="hero-links">
+              {manualCheckout && <Link href="/demo#cli-run">View the verified CLI run</Link>}
               <a href={reserveReplayUrl}>Replay the shared reserve claim <ExternalArrow /></a>
               {showLiveLink && <Link href="/demo#live-demo">{hosted ? "Run a demo with an invite" : "Open the local testnet demo"}</Link>}
             </div>

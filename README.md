@@ -2,9 +2,9 @@
 
 AgSurance gives AI agents a payment account with loss coverage on NEAR testnet. The owner chooses a supplier and sets a spending limit. The agent can pay that supplier from its own runtime. If the demo records a loss, reviewers examine the transfer before a separate reserve pays the claim.
 
-[Inspect the CLI run](https://agsurance-judge-preview.vercel.app/demo#cli-run) · [Try a new run with an invite](https://agsurance-judge-preview.vercel.app/demo#demo-invite) · [Read the Rust contracts](https://github.com/AgSurance/agsurance-sc)
+[Try with your testnet wallet](https://agsurance-judge-preview.vercel.app/demo#manual-demo) · [0.18 NEAR payout](https://testnet.nearblocks.io/txns/7bNezR6hT22Bm2MCeSPc59BC2ehBaYSExTQdqn98MRYP/receipts) · [Inspect the CLI run](https://agsurance-judge-preview.vercel.app/demo#cli-run) · [Try a new run with an invite](https://agsurance-judge-preview.vercel.app/demo#demo-invite) · [Read the Rust contracts](https://github.com/AgSurance/agsurance-sc)
 
-## Verify one CLI run on NEAR testnet
+## Verify the 0.25 NEAR CLI replay
 
 Open the public receipts in order. The transactions use the same vault and policy. The claim ID is `vault.agsurance-7910a4d8.testnet/1`.
 
@@ -20,6 +20,24 @@ Open the public receipts in order. The transactions use the same vault and polic
 Compare the approved supplier `supplier.agsurance-7910a4d8.testnet` with the simulated loss recipient `incident.agsurance-7910a4d8.testnet`. The payout goes to `recovery.agsurance-7910a4d8.testnet`.
 
 For a new browser run, use an invite on the same demo page. To connect your own agent and run the CLI, follow the local setup below.
+
+## Use your own testnet wallet
+
+Open the demo, select **Connect Wallet**, and choose **Buy a policy** or **Provide capital**. Use a funded named testnet wallet to buy a policy. The buyer pays a one-time account storage deposit, then signs the checkout from their wallet. The dashboard displays the exact NEAR funding, premium, payout limit and deductible from the deployed vault. It also shows the agent setup commands after purchase.
+
+The public judge Preview uses the shared testnet reserve. A second capital deposit opened capacity for a previously blocked checkout. The first policy kept its 0.18 NEAR limit until the owner raised it to 0.42 NEAR. The reserve paid 0.18 NEAR for a covered loss that occurred before the increase. [Capital deposit](https://testnet.nearblocks.io/txns/81QPfbkG2uhDAKc5HL4NhUCqMJijAd1wkHqdfoGQQ49U/receipts) · [Limit increase](https://testnet.nearblocks.io/txns/CL3ko61db2p4Mw2tZaLEaj9hPWLaXZpW3tipt7CyrkNV/receipts) · [0.18 NEAR payout](https://testnet.nearblocks.io/txns/7bNezR6hT22Bm2MCeSPc59BC2ehBaYSExTQdqn98MRYP/receipts)
+
+The landing page shows illustrative 28-day premium scenarios with zero deductible. Checkout shows the terms enforced by the selected vault.
+
+Set `AGSURANCE_MANUAL_FACTORY`, `AGSURANCE_MANUAL_CAPITAL_POOL`, and `AGSURANCE_MANUAL_SUPPLIER` to the public testnet accounts to enable the signed actions in a local deployment. [Factory setup](https://github.com/AgSurance/agsurance-sc#manual-demo-factory) · [Testnet faucet](https://near-faucet.io/)
+
+For a fresh shared-reserve deployment, set `AGSURANCE_MANUAL_FACTORY` to the factory configured with a risk group. The frontend discovers the reserve and group from the factory. `AGSURANCE_MANUAL_CAPITAL_POOL` is the fallback for older factories with a separate pilot.
+
+- **Buy coverage:** Enter the funds you want to add and choose a payout limit. The maximum quote uses the wallet balance after the deductible, free liquid capital, the per-policy cap, and the remaining risk-group cap. The reserve rechecks capacity at checkout.
+- **Increase an active limit:** Top up the wallet if needed, then approve the premium difference for the current and any already-paid future weeks. The increase takes effect prospectively. The original limit still applies to earlier losses.
+- **Provide capital:** A confirmed deposit in the shared reserve can open more checkout capacity. Providers receive shares at the pool's current value and take on existing obligations. The dashboard shows capital allocated to claims, the buffer, and surplus available for staking. Deposits pause while a payout is in flight or validator funds are being reconciled.
+
+To verify these flows on a local NEAR Sandbox, build the four WASM contracts, make `near-sandbox@0.3.3` available, and run `bun scripts/test-rolling-capacity.ts`. The script defaults to the sibling smart-contract repo's release artifacts and accepts `AGSURANCE_WASM_DIR` and `AGSURANCE_SANDBOX_MODULE` for alternate locations.
 
 ## How the demo works
 
@@ -131,11 +149,11 @@ bun run build
 
 The first customers are teams that give agents a budget for recurring payments. Examples include payments for APIs, computing, and other digital services. The team pays for coverage when it funds the wallet. The agent can pay later premiums from the wallet balance.
 
-The demo uses NEAR for the wallet balance, premiums, reserve, and payout. The initial payment is 0.36 NEAR before network fees. Of that amount, 0.35 NEAR funds the wallet and 0.01 NEAR pays the first premium. The owner also funds the agent subaccount with 0.10 NEAR when they connect the agent.
+The fixed-term local replay uses NEAR for the wallet balance, premiums, reserve, and payout. The initial payment is 0.36 NEAR before network fees. Of that amount, 0.35 NEAR funds the wallet and 0.01 NEAR pays the first premium. The owner also funds the agent subaccount with 0.10 NEAR when they connect the agent.
 
 The reserve sponsor supplies the capital for payouts. The pool sets aside 0.40 NEAR for the demo policy. The deductible is the part of a covered loss that the owner pays. The 0.30 NEAR loss minus the 0.05 NEAR deductible gives a 0.25 NEAR payout.
 
-The optional capital pilot credits earned premiums to the operator and capital providers. Capital providers bear losses from paid claims and receive their share of any staking rewards after the funds return to the reserve. The pilot also supports cashback for a fully paid term without a coverage gap. The default hosted demo uses the standard reserve.
+The optional capital pilot credits earned premiums to the operator and capital providers. Capital providers bear losses from paid claims and receive their share of any staking rewards after the funds return to the reserve. The pilot also supports cashback for a fully paid term without a coverage gap. The public wallet checkout uses the shared reserve. The invite console and recorded replay use their own testnet setups.
 
 ## Demo scope
 
@@ -211,7 +229,7 @@ The test sends transactions on NEAR testnet. It takes several minutes. It covers
 
 Import `AgSurance/agsurance-fe` with `main` as the production branch. Use the Next.js preset with the repository root. If you set the commands manually, use `bun install --frozen-lockfile` and `bun run build`. Keep access to system environment variables enabled so the app can read `VERCEL=1`. The public replay is available by default.
 
-To allow live transactions, connect Upstash Redis to the production project. Redis stores transaction status and receipts so the console can resume after a refresh. Use `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`, or use `KV_REST_API_URL` and `KV_REST_API_TOKEN`.
+To enable the invite console, connect Upstash Redis to the Preview environment. Redis stores transaction status and receipts so the console can resume after a refresh. Use `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`, or use `KV_REST_API_URL` and `KV_REST_API_TOKEN`.
 
 Prepare a separate testnet setup for each invite. Run this command from `agsurance-fe` to write the invite files to a new private directory.
 
@@ -219,7 +237,7 @@ Prepare a separate testnet setup for each invite. Run this command from `agsuran
 bun scripts/prepare-hosted-demo.ts /path/to/private-invites /path/to/slot-a/.env.local /path/to/slot-b/.env.local
 ```
 
-Set the sensitive production variable `AGSURANCE_DEMO_INVITES` to the contents of `accounts.json`. Redeploy the app. Give each judge a separate code from `invite-codes.txt` and the hosted `/demo` link. Keep both files outside the deployed directory. Keep the local operator's signing configuration and keys on the local machine.
+Set the sensitive Preview variable `AGSURANCE_DEMO_INVITES` to the contents of `accounts.json`. Redeploy the app. Give each judge a separate code from `invite-codes.txt` and the hosted `/demo` link. Keep both files outside the deployed directory. Keep the local operator's signing configuration and keys on the local machine.
 
 For a recovery Preview, prepare separate invite accounts from a newly deployed testnet vault. Set `AGSURANCE_RECOVERY_PREVIEW=1` in the Vercel Preview environment and configure the invites and Redis for that environment. The invite console can submit observed evidence from the simulated loss and add one 0.05 NEAR recovery before payout. Recovery-account setup and replacement provisioning use the local console.
 

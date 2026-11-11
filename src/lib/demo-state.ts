@@ -27,6 +27,7 @@ export type ClaimRecovery = {
 };
 export type RecoveryRecipient = "Beneficiary" | "Reserve";
 export type Coverage = {
+  term_end?: number | null;
   active: boolean; current_window: number | null; payable_window: number | null; next_boundary: number | null;
   renewal_pending: boolean; paused: boolean; recovery_pending: boolean; retired: boolean; unused_premium: boolean;
   migration_started?: boolean; filing_deadline?: number | null; retired_at_ms?: number | null; window_seconds?: number;
@@ -40,7 +41,11 @@ export type Dashboard = {
   coverage?: Coverage; claim_recovery?: ClaimRecovery | null;
   owner?: string; agent?: Agent | null; agent_funding?: string;
   wallet_funding?: string; max_supplier_limit?: string;
-  checkout?: { policy_id: number; phase: "Booking" | "Funding" | "Releasing" | "ReleaseAvailable" | "Refunding" | "RefundAvailable" } | null;
+  checkout?: { policy_id: number; phase: "CheckingBalance" | "Booking" | "Funding" | "Releasing" | "ReleaseAvailable" | "Refunding" | "RefundAvailable" } | null;
+  rolling?: boolean;
+  limit_increase?: { id: number; limit: string; fee: string; stage: "CheckingBalance" | "Reserving" | "Refunding" | "RefundAvailable"; retry_height: number } | null;
+  premiums_distributed?: boolean;
+  premiums_pending?: boolean;
   chain_time?: number; wallet?: string; wallet_code_hash?: string | null; recovery_choice_available?: boolean; pending_beneficiary?: string | null;
 };
 export type DemoState = Dashboard & { incident: Incident | null; wallet: string; vault: string; runner: string; suggestedSupplier?: string; demoOwner: boolean; demoRecovery?: boolean; operatingBalance?: string; payoutProof?: Activity; lossProof?: Activity; recoveryProof?: Activity; reserveStatus?: ReserveStatus; status?: AppStatus; blockHeight?: number; vendorConfirmation?: VendorConfirmation | null };
@@ -99,7 +104,7 @@ export function projectStatus(
   const filingDeadline = coverage?.filing_deadline ?? null;
   const filingClosed = filingDeadline !== null && chainTime >= filingDeadline;
   const shortfall = !!reserveStatus && BigInt(reserveStatus.shortfall) > BigInt(0);
-  const capacityFull = !!reserveStatus && BigInt(reserveStatus.available) < BigInt(state.limit);
+  const capacityFull = !!reserveStatus && BigInt(reserveStatus.available) < (state.rolling ? BigInt(10) ** BigInt(21) : BigInt(state.limit));
   const connecting = !!agent && !agent.connected;
   const buying = !policy || phase === "Paid" || phase === "Closed";
   const claim = !active ? "policy_state" : filingClosed ? "filing_closed" : !hasLoss ? "no_incident" : "available";

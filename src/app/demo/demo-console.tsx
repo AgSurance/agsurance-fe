@@ -339,6 +339,7 @@ export function DemoConsole({ hosted = false, recoveryPreview = false }: { hoste
   const rejectEvidence = observedClaim ? observedVerified && !observedReview.verified : !!state && !!evidence && !evidenceIsCovered(state, evidence);
   const checkout = state?.checkout;
   const checkoutStatus = checkout ? {
+    CheckingBalance: "Checking agent wallet balance",
     Booking: "Checking reserve capacity",
     Funding: "Funding wallet",
     Releasing: "Releasing reserve",
