@@ -40,7 +40,7 @@ body {
   color: white;
 }
 .brand { display: inline-flex; align-items: center; gap: 8px; font-size: 1.12rem; font-weight: 600; letter-spacing: -0.045em; white-space: nowrap; }
-.brand svg { color: var(--color-bubblegum); flex: none; }
+.brand img { flex: none; }
 .main-nav { display: flex; gap: clamp(18px, 3vw, 40px); font-size: 0.8rem; }
 .main-nav a:hover, .header-link:hover, .text-action:hover { color: var(--color-bubblegum); }
 .header-link, .hero-actions a { display: inline-flex; align-items: center; gap: 9px; font-size: 0.82rem; font-weight: 600; }
@@ -123,7 +123,6 @@ h3 { font-size: clamp(1.85rem, 3.1vw, 2.7rem); }
 .claim summary { cursor: pointer; color: var(--color-deep-blue); }
 .claim details p { margin-top: 8px; color: var(--muted); }
 .site-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 24px var(--gutter); color: var(--color-deep-blue); }
-.site-footer .brand svg { color: var(--color-deep-blue); }
 .site-footer > a:last-child { display: inline-flex; align-items: center; gap: 6px; }
 
 @media (max-width: 760px) {

@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import Image from "next/image";
 import Link from "next/link";
 import { demoCookie, hostedDemoEnabled, inviteAccounts } from "../../lib/hosted-demo";
 import { DemoConsole } from "./demo-console";
@@ -13,7 +14,13 @@ export default async function DemoPage({ searchParams }: { searchParams: Promise
 
   return (
     <main className="demo-page">
-      <header className="demo-header"><Link href="/">AgSurance</Link><span>NEAR TESTNET</span></header>
+      <header className="demo-header">
+        <Link className="brand" href="/">
+          <Image src="/agsurance-logo.png" width={28} height={28} alt="" />
+          AgSurance
+        </Link>
+        <span>NEAR TESTNET</span>
+      </header>
       <section className="demo-intro">
         <p className="eyebrow"><span /> {live || enabled ? "LIVE COVERAGE DEMO" : "PUBLIC CLAIM REPLAY"}</p>
         <h1>From policy to <em>payout.</em></h1>

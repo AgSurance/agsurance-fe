@@ -17,10 +17,7 @@ function Arrow() {
 function Brand() {
   return (
     <a className="brand" href="#top" aria-label="AgSurance home">
-      <svg aria-hidden="true" width="26" height="28" viewBox="0 0 26 28" fill="none">
-        <path d="m13 2 10 5.5V16c0 4-4.8 7.8-10 10-5.2-2.2-10-6-10-10V7.5L13 2Z" stroke="currentColor" strokeWidth="1.7" />
-        <path d="m8 17 5-8 5 8m-8.3-2.5h6.6" stroke="currentColor" strokeWidth="1.7" />
-      </svg>
+      <Image src="/agsurance-logo.png" width={28} height={28} alt="" />
       <span>AgSurance</span>
     </a>
   );
