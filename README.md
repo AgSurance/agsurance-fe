@@ -2,11 +2,11 @@
 
 AgSurance gives AI agents a payment account with loss coverage on NEAR testnet. The owner chooses a supplier and sets a spending limit. The agent can pay that supplier from its own runtime. If the demo records a loss, reviewers examine the transfer before a separate reserve pays the claim.
 
-[Inspect the CLI run](https://agsurance-judge-preview.vercel.app/demo#cli-run) · [Verify the historical limit](#verify-the-018-near-historical-payout) · [Run the verification](#verify-locally) · [Try with your testnet wallet](https://agsurance-judge-preview.vercel.app/demo#manual-demo) · [Read the Rust contracts](https://github.com/AgSurance/agsurance-sc)
+[Open the 0.25 NEAR CLI replay](https://agsurance-judge-preview.vercel.app/demo#cli-run) · [Inspect the 0.18 NEAR historical payout](https://agsurance-judge-preview.vercel.app/demo#historical-limit) · [Run the verification](#verify-locally) · [Read the Rust contracts](https://github.com/AgSurance/agsurance-sc)
 
 ## Verify the 0.25 NEAR CLI replay
 
-Open the public receipts in order. The transactions use the same vault and policy. The claim ID is `vault.agsurance-7910a4d8.testnet/1`.
+Follow one CLI run through a blocked payment, an approved supplier payment, and reimbursement for a separate simulated loss. Open the public receipts without a wallet or invite code. The claim ID is `vault.agsurance-7910a4d8.testnet/1`.
 
 | Action | Result | Evidence |
 | --- | --- | --- |
@@ -18,8 +18,6 @@ Open the public receipts in order. The transactions use the same vault and polic
 | Pay the claim | The reserve transfers **0.25 NEAR** to the registered recovery account after the 0.05 NEAR deductible. | [Final payout](https://testnet.nearblocks.io/txns/Cosun7xKLxeXHMBuqmFecKcFonuGEvFr4Ff8Wdv28bBU/receipts) |
 
 Compare the approved supplier `supplier.agsurance-7910a4d8.testnet` with the simulated loss recipient `incident.agsurance-7910a4d8.testnet`. The payout goes to `recovery.agsurance-7910a4d8.testnet`.
-
-For a new browser run, use an invite on the same demo page. To connect your own agent and run the CLI, follow the local setup below.
 
 ## Verify the 0.18 NEAR historical payout
 
@@ -49,7 +47,9 @@ NEAR Sandbox downloads its binary on first use. If you already have the official
 
 ## Use your own testnet wallet
 
-Open the demo, select **Connect Wallet**, and choose **Buy a policy** or **Provide capital**. Use a funded named testnet wallet to buy a policy. The buyer pays a one-time account storage deposit, then signs the checkout from their wallet. The dashboard displays the exact NEAR funding, premium, payout limit and deductible from the deployed vault. It also shows the agent setup commands after purchase.
+Open the [wallet section of the demo](https://agsurance-judge-preview.vercel.app/demo#manual-demo), select **Connect Wallet**, and choose **Buy a policy** or **Provide capital**. Use a funded named testnet wallet to buy a policy. The buyer pays a one-time account storage deposit, then signs the checkout from their wallet. The dashboard displays the exact NEAR funding, premium, payout limit and deductible from the deployed vault. It also shows the agent setup commands after purchase.
+
+Use an invite on the same page for a fresh browser run with a funded demo account, or follow the local setup below to run the CLI with your own agent.
 
 The public judge Preview uses the shared testnet reserve described in the [historical payout run](#verify-the-018-near-historical-payout).
 
@@ -264,6 +264,12 @@ bun scripts/prepare-hosted-demo.ts /path/to/private-invites /path/to/slot-a/.env
 Set the sensitive Preview variable `AGSURANCE_DEMO_INVITES` to the contents of `accounts.json`. Redeploy the app. Give each judge a separate code from `invite-codes.txt` and the hosted `/demo` link. Keep both files outside the deployed directory. Keep the local operator's signing configuration and keys on the local machine.
 
 For a recovery Preview, prepare separate invite accounts from a newly deployed testnet vault. Set `AGSURANCE_RECOVERY_PREVIEW=1` in the Vercel Preview environment and configure the invites and Redis for that environment. The invite console can submit observed evidence from the simulated loss and add one 0.05 NEAR recovery before payout. Recovery-account setup and replacement provisioning use the local console.
+
+## Optional duplicate invoice simulation
+
+Run `bun install --frozen-lockfile` and `bun run dev`. In the [local demo](http://localhost:3000/demo#duplicate-invoice), expand **Duplicate invoice simulation (optional)** and select **Run invoice simulation**.
+
+A scripted agent requests two payments of 0.05 NEAR for invoice `INV-1042` to the approved supplier. Both fit within the 0.12 NEAR spending limit, so the 0.05 NEAR overpayment falls outside the current policy, which requires a mandate breach. A proposed invoice ID check blocks the second payment in the comparison. The browser uses a mock ledger to illustrate this coverage boundary.
 
 ## Credits
 

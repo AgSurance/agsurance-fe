@@ -5,8 +5,8 @@ const increaseHash = "CL3ko61db2p4Mw2tZaLEaj9hPWLaXZpW3tipt7CyrkNV";
 export function HistoricalLimit() {
   return (
     <section className="demo-panel demo-run" id="historical-limit" tabIndex={-1} aria-labelledby="historical-limit-heading">
-      <h2 id="historical-limit-heading">A claim uses the limit in force at the loss block</h2>
-      <p>This separate NEAR testnet run shows how an active policy and its shared reserve handle a limit increase.</p>
+      <h2 id="historical-limit-heading">Why the second claim paid 0.18 NEAR</h2>
+      <p>In this separate testnet run, the policy limit rose before the claim was filed. The payout used the limit in force at the block where the loss occurred.</p>
       <ol className="demo-run-trail" role="list">
         <li>
           <div><strong>0.18 NEAR limit at the simulated loss</strong><p className="demo-description">A simulated transfer of 0.30 NEAR executed in block 277,218,273.</p></div>

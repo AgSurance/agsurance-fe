@@ -64,7 +64,7 @@ const steps = [
 export function CliRun() {
   return (
     <section className="demo-panel demo-run" id="cli-run" tabIndex={-1} aria-labelledby="cli-run-heading">
-      <h2 id="cli-run-heading">One verified CLI run</h2>
+      <h2 id="cli-run-heading">0.25 NEAR CLI replay</h2>
       <p>Follow one policy on NEAR testnet, from enforcing a spending rule to paying a claim for a separate simulated loss.</p>
       <dl className="demo-run-summary">
         <div><dt>Payment blocked</dt><dd>0.01 NEAR attempted</dd></div>

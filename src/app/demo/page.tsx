@@ -5,6 +5,7 @@ import { reserveReplayUrl } from "../../lib/demo-links";
 import { demoCookie, hostedDemoEnabled, hostedRecoveryPreview, inviteAccounts } from "../../lib/hosted-demo";
 import { DemoConsole } from "./demo-console";
 import { CliRun } from "./cli-run";
+import { DuplicateInvoice } from "./duplicate-invoice";
 import { HistoricalLimit } from "./historical-limit";
 import { ManualDemo } from "./manual-demo";
 import { manualDemoContracts } from "../../lib/manual-demo";
@@ -27,19 +28,17 @@ export default async function DemoPage({ searchParams }: { searchParams: Promise
         <span>NEAR TESTNET</span>
       </header>
       <section className="demo-intro">
-        <h1>{live ? "Live coverage demo" : "From policy to payout"}</h1>
-        <p>{live
-          ? "Buy a policy, simulate a loss, and follow the claim through to a new payout on NEAR testnet."
-          : "Follow a completed CLI run and check its receipts on NEAR testnet."}</p>
+        <h1>From policy to payout</h1>
+        <p>Follow two completed claims on NEAR testnet. The receipts are public and open without a wallet or invite code.</p>
       </section>
+      <CliRun />
+      <HistoricalLimit />
       <ManualDemo {...manualDemoContracts()} />
       {live && (
         <div id="live-demo" tabIndex={-1}>
           <DemoConsole hosted={hosted} recoveryPreview={hostedRecoveryPreview()} />
         </div>
       )}
-      <CliRun />
-      <HistoricalLimit />
       {!live && (
         <>
           {enabled && <section className="demo-panel demo-invite" id="live-demo" tabIndex={-1} aria-labelledby="invite-heading">
@@ -60,6 +59,7 @@ export default async function DemoPage({ searchParams }: { searchParams: Promise
           </section>
         </>
       )}
+      <DuplicateInvoice />
     </main>
   );
 }

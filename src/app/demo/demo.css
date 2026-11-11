@@ -65,7 +65,7 @@
 .demo-invite { margin-bottom: 16px; }
 #invite-error { color: var(--ink); font-weight: 600; }
 
-#live-demo, #cli-run { scroll-margin-top: 16px; }
+#live-demo, #cli-run, #historical-limit, #duplicate-invoice { scroll-margin-top: 16px; }
 .demo-run { margin-bottom: 16px; }
 .demo-run h2 { font-size: clamp(2rem, 4vw, 3.25rem); }
 .demo-run-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 20px; }
@@ -74,7 +74,7 @@
 .demo-run-summary dd { font-size: 1.125rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .demo-run-summary .demo-run-paid { background: var(--color-bubblegum); color: var(--color-deep-blue); }
 .demo-run-details { margin-top: 8px; }
-.demo-run-details summary { min-height: 44px; padding-block: 11px; color: var(--color-deep-blue); cursor: pointer; }
+.demo-run-details summary, .demo-invoice summary { min-height: 44px; padding-block: 11px; color: var(--color-deep-blue); cursor: pointer; }
 .demo-run-accounts { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 16px 0; }
 .demo-run-accounts > div { min-width: 0; }
 .demo-run-accounts dt { font-weight: 600; }
@@ -83,8 +83,14 @@
 .demo-run-trail .demo-description, .demo-run-trail .demo-proof { margin: 0; }
 .demo-run-trail li:last-child { border-bottom: 1px solid var(--dark-line); }
 .demo-run-links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.demo-invoice { margin-top: 16px; }
+.demo-invoice summary { font-weight: 600; }
+.demo-invoice-results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 16px 0; }
+.demo-invoice-results > div { background: #f3f6ff; padding: 12px; }
+.demo-invoice-results h3 { margin-top: 0; }
 @media (max-width: 760px) {
   .demo-run-trail li { grid-template-columns: 1fr; }
+  .demo-invoice-results { grid-template-columns: 1fr; }
 }
 @media (max-width: 520px) {
   .demo-run-summary { grid-template-columns: 1fr; }
