@@ -7,7 +7,7 @@ export async function POST(request: Request) {
   const form = await request.formData();
   const code = form.get("code");
   if (typeof code !== "string" || !inviteAccounts(code.trim())) {
-    return new NextResponse(null, { status: 303, headers: { location: "/demo?invite=invalid" } });
+    return new NextResponse(null, { status: 303, headers: { location: "/demo?invite=invalid#live-demo" } });
   }
 
   const response = new NextResponse(null, { status: 303, headers: { location: "/demo" } });

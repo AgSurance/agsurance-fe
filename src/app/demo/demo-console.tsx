@@ -465,7 +465,7 @@ export function DemoConsole({ hosted = false, recoveryPreview = false }: { hoste
       </section>
       <div className="demo-grid">
         <section className="demo-panel" aria-labelledby="coverage-dashboard">
-          <p className="eyebrow"><span /> COVERAGE</p>
+          <p className="eyebrow">COVERAGE</p>
           <h2 id="coverage-dashboard">AgSurance Dashboard</h2>
           {coverage && policy && (
             <div className="demo-agent">
@@ -700,7 +700,7 @@ export function DemoConsole({ hosted = false, recoveryPreview = false }: { hoste
             <p className="demo-id">Claim ID · {state.vault}/{policy.id}</p>}
         </section>
         <section className="demo-panel" aria-labelledby="agent-console">
-          <p className="eyebrow"><span /> RUNNER</p>
+          <p className="eyebrow">RUNNER</p>
           <h2 id="agent-console">Agent Console</h2>
           <p className="demo-description">{hosted ? "The test runner records a simulated loss. The demo policy owner files the claim." : "The fixture records a test loss. A connected agent submits the claim from its own CLI."}</p>
           {state?.agent_funding && <p className="demo-id">Vault · {state.vault}</p>}

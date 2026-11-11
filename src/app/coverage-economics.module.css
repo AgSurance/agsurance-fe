@@ -25,7 +25,7 @@
 .options span {
   display: grid;
   min-width: 44px;
-  min-height: 42px;
+  min-height: 44px;
   place-items: center;
   border: 1px solid var(--light-line);
   cursor: pointer;
@@ -36,6 +36,8 @@
 .toggle input { width: 18px; height: 18px; accent-color: var(--color-bubblegum); }
 
 .results { display: grid; gap: 12px; margin-top: 12px; }
+.scenario { padding: 12px clamp(16px, 3vw, 28px); background: var(--color-bubblegum); color: var(--color-deep-blue); }
+.scenario strong { margin-inline-end: 0.25em; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
 .charts, .outcomes { display: grid; gap: 12px; }
 .charts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .outcomes { grid-template-columns: repeat(3, minmax(0, 1fr)); }

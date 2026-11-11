@@ -225,4 +225,4 @@ For a recovery Preview, prepare separate invite accounts from a newly deployed t
 
 ## Credits
 
-The process cards use [React Bits SpotlightCard](https://github.com/DavidHDev/react-bits/blob/c83b5e7e026f003af33ff9ebc3d93afb5c86ad22/src/ts-tailwind/Components/SpotlightCard/SpotlightCard.tsx). See the [upstream license](licenses/react-bits.md). The team used an image generation tool for `public/account-reserve.jpg`.
+The team used an image generation tool for `public/account-reserve.jpg`.

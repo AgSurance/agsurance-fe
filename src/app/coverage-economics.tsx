@@ -29,7 +29,7 @@ export function CoverageEconomics() {
   return (
     <section className={`section ${styles.section}`} id="economics" aria-labelledby="economics-title">
       <header className={styles.heading}>
-        <p className="eyebrow"><span /> COVERAGE ECONOMICS / DRAFT</p>
+        <p className="eyebrow">ILLUSTRATIVE MODEL</p>
         <h2 id="economics-title">Where the money goes</h2>
         <p>A premium is what you pay for coverage. Capital providers put money into the reserve. See how premiums and payouts affect what they earn.</p>
       </header>
@@ -52,10 +52,13 @@ export function CoverageEconomics() {
         </label>
       </div>
 
-      <div aria-live="polite" className={styles.results}>
+      <div className={styles.results}>
+        <p aria-live="polite" className={styles.scenario}>
+          <strong>{near(paid * 100)}</strong> total payout across {claims} {claims === 1 ? "paid claim" : "paid claims"}
+        </p>
         <div className={styles.charts}>
           <article className={styles.panel}>
-            <p className="eyebrow">01 / EACH 28-DAY POLICY</p>
+            <p className="eyebrow">EACH 28-DAY POLICY</p>
             <h3>Where the premium goes</h3>
             <p className={styles.total}>{near(premium)}</p>
             <div className={styles.bar} aria-hidden="true">
@@ -71,7 +74,7 @@ export function CoverageEconomics() {
           </article>
 
           <article className={styles.panel}>
-            <p className="eyebrow">02 / BEFORE PAYOUTS</p>
+            <p className="eyebrow">BEFORE PAYOUTS</p>
             <h3>How we divide the reserve</h3>
             <p className={styles.total}>{reserve} NEAR</p>
             <div className={styles.bar} aria-hidden="true">
@@ -90,9 +93,9 @@ export function CoverageEconomics() {
         <div className={styles.outcomes}>
           <article className={styles.outcome}>
             <p className="eyebrow">POLICYHOLDER</p>
-            <h3>{payout} NEAR</h3>
-            <p>You lose {loss} NEAR in a covered incident and get none of it back before the payout. You bear the first {deductible} NEAR. The reserve pays the rest.</p>
-            <p>In this example, you add 50 NEAR to the agent account. Coverage costs {near(premium)} for 28 days and pays up to {limit} NEAR. After cashback, coverage costs {near(premium - rebate)}.</p>
+            <h3>{payout} NEAR per paid claim</h3>
+            <p>For one claim, the reserve pays {payout} NEAR on a {loss} NEAR covered loss with a {deductible} NEAR deductible and no funds recovered before payout.</p>
+            <p>In this example, you add 50 NEAR to the agent account. Coverage costs {near(premium)} for 28 days and pays up to {limit} NEAR. {cashback ? `After cashback, coverage costs ${near(premium - rebate)}.` : "No cashback applies."}</p>
           </article>
           <article className={`${styles.outcome} ${styles.capital}`}>
             <p className="eyebrow">CAPITAL PROVIDERS</p>
@@ -108,7 +111,7 @@ export function CoverageEconomics() {
         </div>
       </div>
 
-      <p className={styles.note}>This example assumes that both policies are paid in full and run for 28 days. With cashback on, you get 20% of the premium back when the policy ends. You get cashback even if the reserve paid a claim. The result for capital providers excludes staking rewards and expenses.</p>
+      <p className={styles.note}>The model uses illustrative amounts separate from the testnet demos. It assumes both policies are paid in full and run for 28 days. With cashback on, you get 20% of the premium back at the end even if the reserve paid a claim. Capital results exclude staking rewards and expenses.</p>
     </section>
   );
 }

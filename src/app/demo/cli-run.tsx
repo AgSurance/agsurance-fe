@@ -1,3 +1,5 @@
+import { cliPayoutHash, receiptUrl } from "../../lib/demo-links";
+
 const run = {
   "vault": "vault.agsurance-7910a4d8.testnet",
   "policy": 1,
@@ -13,11 +15,10 @@ const run = {
     "claim": "FDhbHXvusRjuPNn4X2d7xcZkhZjAuUQjDvVd1N6bxWji",
     "vote1": "4QQF7JEdqGjDnyySY3co9RKZLMD3bVA8SwhskPz8RD3X",
     "vote2": "8m4Yg68qLei14rVzwwhYEhJ8aSLFyov2E3A7u3Wdp8NH",
-    "payout": "Cosun7xKLxeXHMBuqmFecKcFonuGEvFr4Ff8Wdv28bBU"
+    "payout": cliPayoutHash
   }
 };
 
-const explorer = "https://testnet.nearblocks.io/txns/";
 const steps = [
   {
     title: "Activate the policy",
@@ -41,7 +42,7 @@ const steps = [
   },
   {
     title: "Record a simulated loss",
-    result: "The demo runner sends 0.30 NEAR to the test incident account shown above.",
+    result: "The demo runner sends 0.30 NEAR to a separate test incident account.",
     links: [{ label: "Simulated loss receipt", hash: run.hashes.loss }],
   },
   {
@@ -62,27 +63,36 @@ const steps = [
 
 export function CliRun() {
   return (
-    <section className="demo-panel demo-run" id="cli-run" aria-labelledby="cli-run-heading">
-      <h2 id="cli-run-heading">One CLI run. 0.25 NEAR paid.</h2>
-      <p>Follow one policy on NEAR testnet. Anyone can open the receipts.</p>
-      <dl className="demo-run-accounts">
-        <div><dt>Claim ID</dt><dd className="demo-id">{run.vault}/{run.policy}</dd></div>
-        <div><dt>Approved supplier</dt><dd className="demo-id">{run.supplier}</dd></div>
-        <div><dt>Simulated loss recipient</dt><dd className="demo-id">{run.incidentRecipient}</dd></div>
-        <div><dt>Recovery account</dt><dd className="demo-id">{run.beneficiary}</dd></div>
+    <section className="demo-panel demo-run" id="cli-run" tabIndex={-1} aria-labelledby="cli-run-heading">
+      <h2 id="cli-run-heading">One verified CLI run</h2>
+      <p>Follow one policy on NEAR testnet, from enforcing a spending rule to paying a claim for a separate simulated loss.</p>
+      <dl className="demo-run-summary">
+        <div><dt>Payment blocked</dt><dd>0.01 NEAR attempted</dd></div>
+        <div><dt>Approved supplier paid</dt><dd>0.05 NEAR sent</dd></div>
+        <div className="demo-run-paid"><dt>Claim reimbursed</dt><dd>0.25 NEAR paid</dd></div>
       </dl>
-      <ol className="demo-run-trail">
+      <h3>CLI transaction receipts</h3>
+      <ol className="demo-run-trail" role="list">
         {steps.map(({ title, result, links }) => (
           <li key={title}>
             <div><strong>{title}</strong><p className="demo-description">{result}</p></div>
             <div className="demo-run-links">
               {links.map(({ label, hash }) => (
-                <a className="demo-proof" key={hash} href={`${explorer}${hash}/receipts`}>{label}</a>
+                <a className="demo-proof" key={hash} href={receiptUrl(hash)}>{label}</a>
               ))}
             </div>
           </li>
         ))}
       </ol>
+      <details className="demo-run-details">
+        <summary>Policy and account IDs</summary>
+        <dl className="demo-run-accounts">
+          <div><dt>Claim ID</dt><dd className="demo-id">{run.vault}/{run.policy}</dd></div>
+          <div><dt>Approved supplier</dt><dd className="demo-id">{run.supplier}</dd></div>
+          <div><dt>Simulated loss recipient</dt><dd className="demo-id">{run.incidentRecipient}</dd></div>
+          <div><dt>Recovery account</dt><dd className="demo-id">{run.beneficiary}</dd></div>
+        </dl>
+      </details>
     </section>
   );
 }
