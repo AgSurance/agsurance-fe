@@ -15,10 +15,16 @@ export type Policy = {
 };
 export type Incident = { policy_id: number; amount: string; recipient: string; block_height: number };
 export type Agent = { account_id: string; public_key: string; connected: boolean };
+export type ClaimRecovery = {
+  recovered_before_payout: string; recovered_after_payout: string;
+  beneficiary_claimable: string; reserve_claimable: string; beneficiary_pending: string; reserve_pending: string;
+  beneficiary_over_limit: string; beneficiary_deductible: string; reserve_reimbursement: string;
+};
+export type RecoveryRecipient = "Beneficiary" | "Reserve";
 export type Coverage = {
   active: boolean; current_window: number | null; payable_window: number | null; next_boundary: number | null;
   renewal_pending: boolean; paused: boolean; recovery_pending: boolean; retired: boolean; unused_premium: boolean;
-  filing_deadline?: number | null; retired_at_ms?: number | null; window_seconds?: number;
+  migration_started?: boolean; filing_deadline?: number | null; retired_at_ms?: number | null; window_seconds?: number;
 };
 export type ReserveStatus = {
   assets: string; locked: string; available: string; shortfall: string; pending: string; quarantined: string;
@@ -26,28 +32,54 @@ export type ReserveStatus = {
 export type Dashboard = {
   reserve?: string; reserve_pool?: string; reserved: string; premium: string; limit: string; deductible: string;
   policy: Policy | null; beneficiary: string;
-  coverage?: Coverage;
+  coverage?: Coverage; claim_recovery?: ClaimRecovery | null;
   owner?: string; agent?: Agent | null; agent_funding?: string;
   wallet_funding?: string; max_supplier_limit?: string;
   checkout?: { policy_id: number; phase: "Booking" | "Funding" | "Releasing" | "ReleaseAvailable" | "Refunding" | "RefundAvailable" } | null;
   chain_time?: number; wallet?: string;
 };
 export type DemoState = Dashboard & { incident: Incident | null; wallet: string; vault: string; runner: string; suggestedSupplier?: string; demoOwner: boolean; demoRecovery?: boolean; operatingBalance?: string; payoutProof?: Activity; lossProof?: Activity; recoveryProof?: Activity; reserveStatus?: ReserveStatus; status?: AppStatus; blockHeight?: number };
-export type Step = "buy" | "loss" | "submit" | "review1" | "review2" | "review3" | "pay" | "connect" | "revoke" | "refund" | "pause" | "recover" | "premium-refund" | "recovery-claim" | "escalate" | "close";
+export type Step = "buy" | "loss" | "submit" | "review1" | "review2" | "review3" | "pay" | "connect" | "revoke" | "refund" | "pause" | "recover" | "premium-refund" | "recovery-claim" | "rotate-agent" | "resume-wallet" | "record-claim-recovery" | "distribute-claim-recovery" | "escalate" | "close";
 export type Activity = { label: string; actor: string; hash: string; receipt?: string; policyId?: number; vault?: string };
 export type TransactionReference = { transactionHash: string; signerId: string };
 type Action = Step | "pay-supplier" | "renew" | "agent-claim";
 type Availability = "available" | "policy_state" | "pending" | "no_incident" | "filing_closed" | "window_open" | "coverage_inactive" | "wallet_paused" | "reserve_shortfall" | "no_capacity" | "agent_disconnected" | "no_premium_due" | "already_voted" | "review_deadline_open";
-type StatusInput = Dashboard & { incident?: Incident | null; reserveStatus?: ReserveStatus };
+type StatusInput = Dashboard & { incident?: Incident | null; reserveStatus?: ReserveStatus; operatingBalance?: string };
+export type Renewal = {
+  state: "upcoming" | "due_soon" | "due" | "overdue" | "pending" | "confirmed";
+  period: number; amount: string; dueAt: number; opensAt: number;
+  blocker: "wallet_paused" | "agent_disconnected" | "insufficient_balance" | null;
+};
 export type AppStatus = {
   policyId: number | null;
   checkoutPolicyId: number | null;
   phase: Phase | null;
   coverage: "unknown" | "none" | "active" | "lapsed" | "ended" | "retired";
   filingDeadline: number | null;
+  renewal: Renewal | null;
   actions: Record<Action, Availability>;
   pendingTransaction: TransactionReference | null;
 };
+
+function projectRenewal(state: StatusInput, chainTime: number): Renewal | null {
+  const { coverage, policy, operatingBalance } = state;
+  if (!coverage || !policy?.windows || policy.phase !== "Active" || coverage.retired ||
+      coverage.current_window == null || coverage.next_boundary == null || !coverage.window_seconds) return null;
+  const current = coverage.current_window;
+  const target = coverage.active ? current + 1 : current;
+  if (target >= policy.windows.length) return null;
+  const lead = Math.floor(coverage.window_seconds / 7);
+  const dueAt = coverage.next_boundary - (target === current ? coverage.window_seconds : 0);
+  const opensAt = dueAt - lead;
+  const confirmed = policy.windows[target] != null;
+  const renewalState = confirmed ? "confirmed" : coverage.renewal_pending ? "pending"
+    : !coverage.active ? "overdue" : chainTime >= opensAt ? "due"
+    : chainTime >= opensAt - lead ? "due_soon" : "upcoming";
+  const blocker = confirmed || coverage.renewal_pending ? null : coverage.paused ? "wallet_paused"
+    : !state.agent?.connected ? "agent_disconnected" : operatingBalance != null && BigInt(operatingBalance) < BigInt(state.premium)
+      ? "insufficient_balance" : null;
+  return { state: renewalState, period: target + 1, amount: state.premium, dueAt, opensAt, blocker };
+}
 
 export function projectStatus(
   state: StatusInput,
@@ -69,10 +101,16 @@ export function projectStatus(
   const agentReady = agent?.connected ? "available" : "agent_disconnected";
   const review = (mask: number) => policy?.phase !== "InReview" ? "policy_state" : (policy.votes & mask) ? "already_voted" : "available";
 
+  const replaceable = !!policy && coverage?.migration_started === false && coverage.paused && !coverage.retired;
+  const recovery = state.claim_recovery;
+  const remainingLoss = recovery && policy
+    ? BigInt(policy.loss) - BigInt(recovery.recovered_before_payout) - BigInt(recovery.recovered_after_payout) : BigInt(0);
+
   return {
     policyId: policy?.id ?? null, checkoutPolicyId: checkout?.policy_id ?? null, phase, filingDeadline,
     coverage: !policy ? "none" : !coverage ? "unknown" : coverage.retired ? "retired"
       : phase === "Paid" || phase === "Closed" || coverage.current_window == null ? "ended" : coverage.active ? "active" : "lapsed",
+    renewal: projectRenewal(state, chainTime),
     pendingTransaction,
     actions: {
       buy: checkout || connecting || coverage?.renewal_pending ? "pending" : coverage?.paused ? "wallet_paused"
@@ -86,6 +124,14 @@ export function projectStatus(
       recover: !coverage?.paused || coverage.retired ? "policy_state" : coverage.recovery_pending || coverage.renewal_pending ? "pending" : "available",
       "premium-refund": coverage?.unused_premium ? "available" : "policy_state",
       "recovery-claim": coverage?.paused ? claim : "policy_state",
+      "rotate-agent": !replaceable || !state.agent_funding || agent?.connected ? "policy_state"
+        : checkout || coverage?.recovery_pending || connecting ? "pending" : "available",
+      "resume-wallet": !replaceable || !agent?.connected ? "policy_state"
+        : checkout || coverage?.recovery_pending || coverage?.renewal_pending ? "pending" : "available",
+      "record-claim-recovery": recovery && ["InReview", "Approved", "Paid"].includes(phase ?? "") && remainingLoss > BigInt(0)
+        ? "available" : phase === "Paying" ? "pending" : "policy_state",
+      "distribute-claim-recovery": recovery && (BigInt(recovery.beneficiary_claimable) > BigInt(0) && BigInt(recovery.beneficiary_pending) === BigInt(0)
+        || BigInt(recovery.reserve_claimable) > BigInt(0) && BigInt(recovery.reserve_pending) === BigInt(0)) ? "available" : "policy_state",
       loss: !active || hasLoss ? "policy_state" : coverage?.paused ? "wallet_paused" : coverage && !coverage.active ? "coverage_inactive" : "available",
       submit: !state.owner || allowOwnerClaim ? claim : "policy_state",
       review1: review(1), review2: review(2), review3: review(4),

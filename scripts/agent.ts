@@ -76,10 +76,15 @@ async function main() {
     const coverage = dashboard.coverage;
     if (!coverage) throw new Error("This vault does not support renewal.");
     if (status.actions.renew === "pending" || status.actions.renew === "no_premium_due") {
-      console.log(JSON.stringify({ status: coverage.renewal_pending ? "Premium pending" : "No premium due" }));
+      console.log(JSON.stringify({ status: coverage.renewal_pending ? "Premium pending" : "No premium due", renewal: status.renewal }));
       return;
     }
-    if (status.actions.renew !== "available" || coverage.payable_window == null) throw new Error(`Renewal unavailable: ${status.actions.renew}`);
+    if (status.actions.renew !== "available" || coverage.payable_window == null) {
+      throw new Error(`Renewal unavailable: ${status.actions.renew}`);
+    }
+    if (status.renewal?.blocker === "insufficient_balance") {
+      throw new Error(`Top up the wallet before paying ${status.renewal.amount} yoctoNEAR for period ${status.renewal.period}.`);
+    }
     const outcome = await send("pay_premium", { policy_id: policy.id });
     console.log(JSON.stringify({
       status: "Premium confirmed", window: coverage.payable_window + 1,

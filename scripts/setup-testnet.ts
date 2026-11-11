@@ -1,7 +1,15 @@
 import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { KeyPair } from "@near-js/crypto";
+import { parseNear } from "../src/lib/demo-state";
 import { actions, call, milliNear, rpc, transact, view, type Actor, type DemoAccounts } from "../src/lib/demo-near";
+
+const pilotValidator = process.env.AGSURANCE_PILOT_VALIDATOR;
+const pilotBuffer = parseNear(process.env.AGSURANCE_PILOT_BUFFER_NEAR ?? "0.10");
+const pilotCap = parseNear(process.env.AGSURANCE_PILOT_STAKE_CAP_NEAR ?? "0.10");
+if (pilotValidator && (!pilotBuffer || pilotBuffer === "0" || !pilotCap || pilotCap === "0")) {
+  throw new Error("Set a positive pilot buffer and staking cap.");
+}
 
 const saved = process.env.AGSURANCE_DEMO_ACCOUNTS;
 const existing = saved ? JSON.parse(saved) as DemoAccounts : undefined;
@@ -25,6 +33,8 @@ if (!wasm) throw new Error("Pass the smart-contract WASM output directory");
 const [walletCode, vaultCode, poolCode] = await Promise.all([
   readFile(`${wasm}/agent_wallet.wasm`), readFile(`${wasm}/coverage_vault.wasm`), readFile(`${wasm}/reserve_pool.wasm`),
 ]);
+// Testnet storage costs 0.01 NEAR per KiB approximately. Keep room for contract state.
+const contractFunding = (minimum: number, code: Uint8Array) => Math.max(minimum, Math.ceil(code.byteLength / 100) + 350);
 const keyFor = (actor: Actor) => KeyPair.fromString(actor.key as `ed25519:${string}`).getPublicKey();
 if (!existing) {
   await writeFile(".env.local", `AGSURANCE_DEMO_ACCOUNTS='${JSON.stringify(accounts)}'\n`, { mode: 0o600, flag: "wx" });
@@ -73,11 +83,12 @@ await createAccount(beneficiary, 150);
 await createAccount(recipient, 30);
 await createAccount(supplier, 30);
 for (const reviewer of reviewers) await createAccount(reviewer, 100);
-await createAccount(wallet, 2500, [actions.deployContract(walletCode), call("new", { vault: vault.id, runner: runner.id, recipient: recipient.id })]);
-await createAccount(pool, 2000, [actions.deployContract(poolCode), call("new", { operator: owner.id })]);
-await createAccount(vault, 3200, [actions.deployContract(vaultCode), call("new", {
+await createAccount(wallet, contractFunding(2500, walletCode), [actions.deployContract(walletCode), call("new", { vault: vault.id, runner: runner.id, recipient: recipient.id })]);
+await createAccount(pool, contractFunding(2000, poolCode), [actions.deployContract(poolCode), call("new", { operator: owner.id })]);
+await createAccount(vault, contractFunding(3200, vaultCode), [actions.deployContract(vaultCode), call("new", {
   owner: policyOwner, runner: runner.id, wallet: wallet.id, beneficiary: beneficiary.id, reviewers: reviewers.map(r => r.id),
   reserve_pool: pool.id,
+  capital_pilot: !!pilotValidator,
   test_review_seconds: process.env.AGSURANCE_TEST_REVIEW_SECONDS ? Number(process.env.AGSURANCE_TEST_REVIEW_SECONDS) : null,
   test_window_seconds: process.env.AGSURANCE_TEST_WINDOW_SECONDS ? Number(process.env.AGSURANCE_TEST_WINDOW_SECONDS) : null,
   test_claim_seconds: process.env.AGSURANCE_TEST_CLAIM_SECONDS ? Number(process.env.AGSURANCE_TEST_CLAIM_SECONDS) : null,
@@ -86,7 +97,18 @@ if (!(await view<string | null>(pool.id, "vault_beneficiary", { vault: vault.id 
   await transact(owner, pool.id, [call("register_vault", { vault: vault.id, beneficiary: beneficiary.id })]);
 }
 const { assets } = await view<{ assets: string }>(pool.id, "reserve_status");
-if (assets === "0") {
+if (pilotValidator) {
+  const pilot = await view<{ validator: string; buffer: string; delegation_cap: string } | null>(pool.id, "capital_status");
+  if (pilot && (pilot.validator !== pilotValidator || pilot.buffer !== pilotBuffer || pilot.delegation_cap !== pilotCap)) {
+    throw new Error("This pool already has different pilot terms.");
+  }
+  if (!pilot) {
+    const configured = await transact(owner, pool.id, [call("configure_capital_pilot", {
+      validator: pilotValidator, buffer: pilotBuffer, delegation_cap: pilotCap, capital_bps: 7_000, cashback_bps: 2_000,
+    })]);
+    console.log(`Capital pilot configured: ${configured.hash}`);
+  }
+} else if (assets === "0") {
   const reserve = await transact(owner, pool.id, [call("fund_reserve", {}, BigInt(1000) * milliNear)]);
   console.log(`Demo reserve funded: ${reserve.hash}`);
 }

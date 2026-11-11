@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { PublicKey } from "@near-js/crypto";
 import { call, PendingTransactionError, readDashboard, reconcileTransaction, rpc, transact, TransactionFailedError, transferReceipt, view, type DemoAccounts, type SignedReference } from "../../../lib/demo-near";
 import { verifyLossEvidence } from "../../../lib/claim-evidence";
-import { checkoutTotal, evidenceIsCovered, projectStatus, type Activity, type Dashboard, type Mandate, type Step } from "../../../lib/demo-state";
+import { checkoutTotal, evidenceIsCovered, projectStatus, type Activity, type Dashboard, type Mandate, type RecoveryRecipient, type Step } from "../../../lib/demo-state";
 import { clearPending, readPending, recordPending } from "../../../lib/pending-transaction";
 import { demoCookie, hostedDemoOrigin, hostedJournal, hostedSteps, inviteAccounts } from "../../../lib/hosted-demo";
 
@@ -23,7 +23,7 @@ async function config() {
 const proofDirectory = join(process.cwd(), ".agsurance-demo");
 const pendingFile = (vault: string) => join(proofDirectory, `${vault}-pending.json`);
 type ProofKind = "pay" | "recover" | "loss";
-type PendingStep = SignedReference & { step: Step; label: string; policyId?: number; sender?: string; recipient?: string };
+type PendingStep = SignedReference & { step: Step; label: string; policyId?: number; sender?: string; recipient?: string; zeroSettlement?: boolean };
 const proofFile = (vault: string, policyId: number, kind: ProofKind) =>
   join(proofDirectory, `${vault}-${policyId}${kind === "pay" ? "" : kind === "recover" ? "-recovery" : "-loss"}.json`);
 
@@ -95,7 +95,7 @@ async function finishStep(accounts: DemoAccounts, pending: PendingStep) {
   const receipt = sender && recipient ? await transferReceipt(pending, sender, recipient) : undefined;
   const activity = { label, actor: signerId, hash: transactionHash, receipt, policyId, vault: accounts.vault };
   const hosted = process.env.VERCEL === "1";
-  if (hosted && (step === "loss" || step === "pay") && !receipt) throw new Error("The transfer receipt is not available yet.");
+  if (hosted && (step === "loss" || (step === "pay" && !pending.zeroSettlement)) && !receipt) throw new Error("The transfer receipt is not available yet.");
   if ((step === "pay" || step === "recover" || (hosted && step === "loss")) && policyId && receipt) {
     await saveProof(accounts.vault, policyId, step, activity);
   }
@@ -117,7 +117,7 @@ export async function GET(request: Request) {
     if (hash) {
       if (hosted) return Response.json({ error: "Use the demo signer for this session." }, { status: 403 });
       const method = params.get("method");
-      const recoveryMethod = method != null && ["pause_wallet", "recover_wallet", "refund_unused_premium", "submit_claim"].includes(method);
+      const recoveryMethod = method != null && ["pause_wallet", "recover_wallet", "refund_unused_premium", "submit_claim", "rotate_agent", "resume_wallet", "record_claim_recovery"].includes(method);
       if (!method || (!recoveryMethod && !["buy_policy", "connect_agent", "revoke_agent", "retry_checkout_refund"].includes(method))) {
         return Response.json({ error: "Invalid owner action." }, { status: 400 });
       }
@@ -132,7 +132,7 @@ export async function GET(request: Request) {
         status: { Failure?: object; SuccessValue?: string };
         transaction: {
           signer_id: string; receiver_id: string; hash: string;
-          actions: { FunctionCall?: { method_name: string; args: string } }[];
+          actions: { FunctionCall?: { method_name: string; args: string; deposit: string } }[];
         };
       }>("tx", { tx_hash: hash, sender_account_id: signer, wait_until: "NONE" });
       if (outcome.final_execution_status !== "FINAL") {
@@ -147,7 +147,8 @@ export async function GET(request: Request) {
       if (recoveryMethod || method === "connect_agent" || method === "revoke_agent" || (method === "retry_checkout_refund" && params.has("policy_id"))) {
         const args = JSON.parse(Buffer.from(action.args, "base64").toString()) as { policy_id: number; public_key?: string };
         if (String(args.policy_id) !== params.get("policy_id") ||
-            (method === "connect_agent" && args.public_key !== params.get("public_key"))) {
+            (["connect_agent", "rotate_agent"].includes(method) && args.public_key !== params.get("public_key")) ||
+            (method === "record_claim_recovery" && action.deposit !== params.get("deposit"))) {
           return Response.json({ code: "transaction_mismatch", error: "The transaction does not match the requested policy or agent key." }, { status: 409 });
         }
       }
@@ -200,8 +201,9 @@ export async function POST(request: Request) {
     }
     if (!release) return Response.json({ error: "Wait for the pending transaction and refresh the dashboard." }, { status: 409 });
 
-    const { step, publicKey, mandate, lossTx, expectedPolicyId, expectedCheckoutId } = await request.json() as {
+    const { step, publicKey, mandate, lossTx, recoveredAmount, recipient, expectedPolicyId, expectedCheckoutId } = await request.json() as {
       step: Step | "reconcile"; publicKey?: string; mandate?: Mandate; lossTx?: string;
+      recoveredAmount?: string; recipient?: RecoveryRecipient;
       expectedPolicyId?: number | null; expectedCheckoutId?: number | null;
     };
     if (hosted && !hostedSteps.has(step)) {
@@ -214,7 +216,7 @@ export async function POST(request: Request) {
       return await finishStep(accounts, pending);
     }
     if (step === "reconcile") return Response.json({ error: "There is no pending transaction." }, { status: 409 });
-    if (step === "connect") {
+    if (step === "connect" || step === "rotate-agent") {
       if (!publicKey?.startsWith("ed25519:")) return Response.json({ error: "Enter an Ed25519 public key." }, { status: 400 });
       PublicKey.fromString(publicKey);
     }
@@ -228,6 +230,24 @@ export async function POST(request: Request) {
       return Response.json({ code: status.actions[step], error: "This action is unavailable for the current policy state." }, { status: 409 });
     }
     const args = { policy_id: expectedPolicyId ?? undefined };
+    if (step === "record-claim-recovery") {
+      const report = current.claim_recovery!;
+      const available = BigInt(policy!.loss) - BigInt(report.recovered_before_payout) - BigInt(report.recovered_after_payout);
+      if (typeof recoveredAmount !== "string" || !/^[1-9]\d{0,38}$/.test(recoveredAmount) || BigInt(recoveredAmount) > available) {
+        return Response.json({ error: "Enter a positive amount up to the remaining recorded loss." }, { status: 400 });
+      }
+    }
+    if (step === "distribute-claim-recovery") {
+      if (recipient !== "Beneficiary" && recipient !== "Reserve") {
+        return Response.json({ error: "Invalid recovery recipient." }, { status: 400 });
+      }
+      const report = current.claim_recovery!;
+      const [credit, pending] = recipient === "Beneficiary" ? [report.beneficiary_claimable, report.beneficiary_pending]
+        : [report.reserve_claimable, report.reserve_pending];
+      if (BigInt(credit) === BigInt(0) || BigInt(pending) > BigInt(0)) {
+        return Response.json({ error: "There is no available recovery credit for this recipient." }, { status: 409 });
+      }
+    }
     if (step === "buy" && current.max_supplier_limit && !mandate) {
       return Response.json({ error: "Choose a supplier and spending limit." }, { status: 400 });
     }
@@ -260,6 +280,13 @@ export async function POST(request: Request) {
         action: call("refund_unused_premium", args), label: "Unused premium refunded" },
       "recovery-claim": { actor: recovery, target: accounts.vault,
         action: call("submit_claim", args), label: "Recovery account filed claim" },
+      "rotate-agent": { actor: recovery, target: accounts.vault,
+        action: call("rotate_agent", { ...args, public_key: publicKey }, BigInt(current.agent_funding ?? "0")), label: "Replacement agent connected" },
+      "resume-wallet": { actor: recovery, target: accounts.vault, action: call("resume_wallet", args), label: "Wallet resumed" },
+      "record-claim-recovery": { actor: recovery, target: accounts.vault,
+        action: call("record_claim_recovery", args, step === "record-claim-recovery" ? BigInt(recoveredAmount!) : BigInt(0)), label: "Recovered claim funds recorded" },
+      "distribute-claim-recovery": { actor: accounts.runner, target: accounts.vault,
+        action: call("distribute_claim_recovery", { ...args, recipient }), label: `Recovery sent to ${recipient?.toLowerCase()}` },
       loss: { actor: accounts.runner, target: accounts.wallet,
         action: call("simulate_loss", args), label: "Simulated loss confirmed" },
       submit: { actor: hosted ? owner : accounts.runner, target: accounts.vault,
@@ -268,7 +295,7 @@ export async function POST(request: Request) {
       review2: { actor: accounts.reviewers[1], target: accounts.vault, action: vote, label: `Reviewer 2 ${voteLabel}` },
       review3: { actor: accounts.reviewers[2], target: accounts.vault, action: vote, label: `Reviewer 3 ${voteLabel}` },
       escalate: { actor: accounts.runner, target: accounts.vault, action: call("escalate_claim", args), label: "Claim escalation recorded" },
-      pay: { actor: accounts.runner, target: accounts.vault, action: call("pay_claim", args), label: "Reimbursement confirmed" },
+      pay: { actor: accounts.runner, target: accounts.vault, action: call("pay_claim", args), label: policy?.payout === "0" ? "Claim settled without a payout" : "Reimbursement confirmed" },
       close: { actor: accounts.runner, target: accounts.vault, action: call("close_policy", args), label: "Policy closed and reserve released" },
     };
     const command = Object.hasOwn(commands, step) ? commands[step] : undefined;
@@ -276,9 +303,10 @@ export async function POST(request: Request) {
     const sender = step === "pay" ? current.reserve_pool ?? current.vault
       : step === "loss" || step === "recover" ? current.wallet
         : step === "premium-refund" ? current.vault : undefined;
-    const recipient = ["pay", "recover", "premium-refund"].includes(step) ? current.beneficiary : undefined;
+    const transferRecipient = ["pay", "recover", "premium-refund"].includes(step) ? current.beneficiary : undefined;
     await transact(command.actor, command.target, [command.action], async reference => {
-      const entry = { ...reference, step, label: command.label, policyId: policy?.id, sender, recipient };
+      const entry = { ...reference, step, label: command.label, policyId: policy?.id, sender, recipient: transferRecipient,
+        zeroSettlement: step === "pay" && policy?.payout === "0" };
       await saveDemoPending(accounts.vault, entry);
       pending = entry;
     });
