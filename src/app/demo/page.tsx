@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import Image from "next/image";
 import Link from "next/link";
-import { demoCookie, hostedDemoEnabled, inviteAccounts } from "../../lib/hosted-demo";
+import { demoCookie, hostedDemoEnabled, hostedRecoveryPreview, inviteAccounts } from "../../lib/hosted-demo";
 import { DemoConsole } from "./demo-console";
 import "./demo.css";
 
@@ -28,7 +28,7 @@ export default async function DemoPage({ searchParams }: { searchParams: Promise
           ? "Buy a policy, simulate a loss, and follow the claim through to a new payout on NEAR testnet."
           : "Follow a completed claim and view its receipts on NEAR testnet."}</p>
       </section>
-      {live ? <DemoConsole hosted={hosted} /> : (
+      {live ? <DemoConsole hosted={hosted} recoveryPreview={hostedRecoveryPreview()} /> : (
         <>
           {enabled && <section className="demo-panel" aria-labelledby="invite-heading">
             <h2 id="invite-heading">Open your testnet demo</h2>

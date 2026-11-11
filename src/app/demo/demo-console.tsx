@@ -2,12 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { NearConnector, NearWalletBase } from "@hot-labs/near-connect";
-import { CHECKOUT_GAS, checkoutTotal, evidenceIsCovered, parseNear, projectStatus, TESTNET_RPC, type Activity, type AppStatus, type DemoState, type Evidence, type RecoveryRecipient, type Step } from "../../lib/demo-state";
+import { CHECKOUT_GAS, checkoutTotal, evidenceIsCovered, parseNear, projectStatus, TESTNET_RPC, type Activity, type AppStatus, type DemoState, type Evidence, type RecoveryRecipient, type Step, type TransferEvidence } from "../../lib/demo-state";
+
+function demoApi(params?: URLSearchParams) {
+  const query = new URLSearchParams(params);
+  const vault = new URLSearchParams(window.location.search).get("vault");
+  if (vault) query.set("vault", vault);
+  return `/api/demo${query.size ? `?${query}` : ""}`;
+}
 
 const explorer = "https://testnet.nearblocks.io/txns/";
 const historyKey = "agsurance-testnet-activity";
 const walletPendingKey = (vault: string) => `agsurance-wallet-pending-${vault}`;
-type WalletStep = "buy" | "refund" | "connect" | "revoke" | "pause" | "recover" | "premium-refund" | "recovery-claim"
+type WalletStep = "choose-recovery" | "submit-observed" | "buy" | "refund" | "connect" | "revoke" | "pause" | "recover" | "premium-refund" | "recovery-claim"
   | "rotate-agent" | "resume-wallet" | "record-claim-recovery";
 type WalletPending = { query: string; activity: Activity };
 function near(value: string) {
@@ -17,7 +24,7 @@ function near(value: string) {
   return fraction ? `${whole}.${fraction} NEAR` : `${whole} NEAR`;
 }
 
-export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
+export function DemoConsole({ hosted = false, recoveryPreview = false }: { hosted?: boolean; recoveryPreview?: boolean }) {
   const [state, setState] = useState<DemoState>();
   const [history, setHistory] = useState<Activity[]>([]);
   const [pending, setPending] = useState<string>();
@@ -28,6 +35,11 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
   const [supplierInput, setSupplier] = useState<string>();
   const [limitInput, setLimit] = useState("0.05");
   const [limitVisited, setLimitVisited] = useState(false);
+  const [replacementVault, setReplacementVault] = useState<string>();
+  const [beneficiaryInput, setBeneficiaryInput] = useState("");
+  const [observedRefs, setObservedRefs] = useState("");
+  const [observedSelection, setObservedSelection] = useState<{ policy: string; transfers: TransferEvidence[] }>();
+  const [observedReview, setObservedReview] = useState<{ hash: string; verified: boolean }>();
   const [lossInput, setLossInput] = useState<{ policy: string; hash: string }>();
   const [checkedEvidence, setCheckedEvidence] = useState<{ policy: string; evidence: Evidence }>();
   const [walletConnection, setWalletConnection] = useState<{ wallet: NearWalletBase; role: "owner" | "recovery" }>();
@@ -55,7 +67,7 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
       polling = true;
       const id = ++requestId.current;
       try {
-        const response = await fetch("/api/demo", { cache: "no-store", signal: controller.signal });
+        const response = await fetch(demoApi(), { cache: "no-store", signal: controller.signal });
         if (response.ok) {
           const snapshot = await response.json() as DemoState;
           if (!controller.signal.aborted) {
@@ -74,7 +86,7 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
   const refresh = useCallback(async () => {
     const id = ++requestId.current;
     try {
-      const response = await fetch("/api/demo", { cache: "no-store" });
+      const response = await fetch(demoApi(), { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       acceptSnapshot(id, data as DemoState);
@@ -99,12 +111,12 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
     try { localStorage.setItem(historyKey, JSON.stringify(next)); } catch { /* Keep the current session visible. */ }
   }
 
-  async function run(step: Step | "reconcile", label: string, details: { publicKey?: string; recoveredAmount?: string; recipient?: RecoveryRecipient } = {}) {
+  async function run(step: Step | "reconcile", label: string, details: { publicKey?: string; recoveredAmount?: string; recipient?: RecoveryRecipient; beneficiary?: string; refs?: { transactionHash: string; signerId: string }[] } = {}) {
     const id = ++requestId.current;
     setPending(label);
     setError(undefined);
     try {
-      const response = await fetch("/api/demo", {
+      const response = await fetch(demoApi(), {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
           step, ...details, mandate, lossTx, expectedPolicyId: policy?.id ?? null, expectedCheckoutId: checkout?.policy_id ?? null,
         }),
@@ -145,7 +157,7 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
 
   async function confirmWalletAction(entry: WalletPending) {
     const id = ++requestId.current;
-    const response = await fetch(`/api/demo?${entry.query}`, { cache: "no-store" });
+    const response = await fetch(demoApi(new URLSearchParams(entry.query)), { cache: "no-store" });
     const data = await response.json();
     if (response.ok || data.code === "transaction_failed" || data.code === "transaction_mismatch") {
       setWalletPending(undefined);
@@ -169,15 +181,25 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
     if (!state || !ready(step) || actionPending || (step === "record-claim-recovery" && !canReportRecovery)) return;
     const recovery = ["pause", "recover", "premium-refund", "recovery-claim", "rotate-agent", "resume-wallet", "record-claim-recovery"].includes(step);
     const key = step === "connect" ? publicKey.trim() : step === "rotate-agent" ? replacementKey.trim() : undefined;
+    const selectedBeneficiary = state.pending_beneficiary ?? beneficiaryInput.trim();
+    const refs = [...new Map(selectedTransfers.map(transfer => [transfer.receipt.transaction_hash, {
+      transactionHash: transfer.receipt.transaction_hash, signerId: transfer.signer_id,
+    }])).values()];
     const wallet = recovery ? recoveryWallet : ownerWallet;
     const signer = recovery ? state.beneficiary : state.owner;
     if (!wallet) {
       if (recovery ? state.demoRecovery : state.demoOwner) {
-        await run(step, label, { publicKey: key, recoveredAmount: step === "record-claim-recovery" ? recoveryAmount : undefined });
+        await run(step, label, {
+          publicKey: key, recoveredAmount: step === "record-claim-recovery" ? recoveryAmount : undefined,
+          beneficiary: step === "choose-recovery" ? selectedBeneficiary : undefined,
+          refs: step === "submit-observed" ? refs : undefined,
+        });
       }
       return;
     }
     const methods = {
+      "choose-recovery": { methodName: "choose_recovery_account", args: { beneficiary: selectedBeneficiary }, deposit: "0" },
+      "submit-observed": { methodName: "submit_evidence_claim", args: { policy_id: state.policy?.id, transfers: selectedTransfers }, deposit: "0" },
       buy: { methodName: "buy_policy", args: { ...(mandate ?? {}), expected_policy_id: state.policy?.id ?? 0 }, deposit: checkoutTotal(state) },
       refund: { methodName: "retry_checkout_refund", args: { policy_id: state.checkout?.policy_id }, deposit: "0" },
       connect: {
@@ -209,9 +231,10 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
       const hash = result?.transaction?.hash;
       if (typeof hash === "string") {
         const query = new URLSearchParams({ owner_tx: hash, method: methods[step].methodName });
-        if (state.policy && (recovery || step === "connect" || step === "revoke")) query.set("policy_id", String(state.policy.id));
+        if (state.policy && (recovery || step === "connect" || step === "revoke" || step === "submit-observed")) query.set("policy_id", String(state.policy.id));
         if (step === "refund" && state.checkout) query.set("policy_id", String(state.checkout.policy_id));
         if (key) query.set("public_key", key);
+        if (step === "choose-recovery") query.set("beneficiary", selectedBeneficiary);
         if (step === "record-claim-recovery") query.set("deposit", methods[step].deposit);
         if (step === "buy" && mandate) {
           query.set("supplier", mandate.supplier);
@@ -234,7 +257,7 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
     setPending("Verify loss receipt");
     setError(undefined);
     try {
-      const response = await fetch(`/api/demo?loss_tx=${encodeURIComponent(lossTx)}`, { cache: "no-store" });
+      const response = await fetch(demoApi(new URLSearchParams({ loss_tx: lossTx })), { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       setCheckedEvidence({ policy: policyKey, evidence: data as Evidence });
@@ -262,21 +285,58 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
     ? { supplier, limit } : undefined;
   const visibleHistory = hosted ? history.filter(entry => entry.vault === state?.vault) : history;
   const policyKey = `${state?.vault}/${policy?.id}`;
+  const selectedTransfers = observedSelection?.policy === policyKey ? observedSelection.transfers : [];
+  const observedClaim = policy?.observed_claim;
+  const observedVerified = !!observedClaim && observedReview?.hash === observedClaim.evidence_hash;
+  const observedTotal = selectedTransfers.reduce((total, transfer) => total + BigInt(transfer.receipt.amount), BigInt(0));
+  async function setupReplacement() {
+    setPending("Set up replacement wallet");
+    setError(undefined);
+    try {
+      const response = await fetch(demoApi(), {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ step: "prepare-replacement", expectedPolicyId: policy?.id }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+      setReplacementVault(result.vault);
+    } catch (problem) { setError((problem as Error).message); }
+    finally { setPending(undefined); }
+  }
+
+  async function inspectObserved(mode: "watch" | "inspect" | "review") {
+    setPending(mode === "review" ? "Verify submitted transfers" : "Check wallet transfers");
+    setError(undefined);
+    try {
+      const params = new URLSearchParams({ observed: mode });
+      if (mode === "inspect") {
+        for (const line of observedRefs.split("\n").map(value => value.trim()).filter(Boolean)) params.append("ref", line);
+      }
+      const response = await fetch(demoApi(params));
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+      if (mode === "review" && observedClaim) setObservedReview({ hash: observedClaim.evidence_hash, verified: result.verified });
+      else setObservedSelection({ policy: policyKey, transfers: result });
+    } catch (problem) { setError((problem as Error).message); }
+    finally { setPending(undefined); }
+  }
   const claimRecovery = state?.claim_recovery;
-  const recoveryInput = recoveredNear?.policy === policyKey ? recoveredNear.amount : "";
+  const recoveryInput = hosted && recoveryPreview ? "0.05" : recoveredNear?.policy === policyKey ? recoveredNear.amount : "";
   const recoveryAmount = parseNear(recoveryInput);
   const outstandingLoss = policy && claimRecovery
     ? BigInt(policy.loss) - BigInt(claimRecovery.recovered_before_payout) - BigInt(claimRecovery.recovered_after_payout)
     : BigInt(0);
-  const canReportRecovery = !!recoveryAmount && BigInt(recoveryAmount) > BigInt(0) && BigInt(recoveryAmount) <= outstandingLoss;
+  const canReportRecovery = !!recoveryAmount && BigInt(recoveryAmount) > BigInt(0) && BigInt(recoveryAmount) <= outstandingLoss
+    && (!hosted || (recoveryPreview && recoveryAmount === parseNear("0.05")
+      && claimRecovery?.recovered_before_payout === "0" && policy?.phase !== "Paid"));
   const recordedLoss = history.find(entry => entry.label === "Simulated loss confirmed" &&
     entry.policyId === policy?.id && entry.vault === state?.vault);
   const typedLoss = lossInput?.policy === policyKey ? lossInput.hash : undefined;
   const lossTx = (policy?.evidence?.transaction_hash ?? state?.lossProof?.hash ?? typedLoss ?? recordedLoss?.hash ?? "").trim();
   const evidence = policy?.evidence ?? (checkedEvidence?.policy === policyKey &&
     checkedEvidence.evidence.transaction_hash === lossTx ? checkedEvidence.evidence : undefined);
-  const canReview = !policy?.mandate || !!evidence;
-  const rejectEvidence = !!state && !!evidence && !evidenceIsCovered(state, evidence);
+  const canReview = observedClaim ? observedVerified : !policy?.mandate || !!evidence;
+  const rejectEvidence = observedClaim ? observedVerified && !observedReview.verified : !!state && !!evidence && !evidenceIsCovered(state, evidence);
   const checkout = state?.checkout;
   const checkoutStatus = checkout ? {
     Booking: "Checking reserve capacity",
@@ -303,7 +363,7 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
   const ownerReady = !!ownerWallet || !!state?.demoOwner;
   const agentKeyFormat = /^ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}$/;
   const keyLooksValid = agentKeyFormat.test(publicKey.trim());
-  const votes = policy?.votes ?? 0;
+  const votes = observedClaim?.approving ?? policy?.votes ?? 0;
   const voteCount = [1, 2, 4].filter(mask => votes & mask).length;
   const button = (step: Step, label: string, enabled: boolean) => (
     <button type="button" disabled={actionPending || !enabled || !ready(step)} onClick={() => void run(step, label)}>{label}</button>
@@ -315,6 +375,17 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
   );
   const checkoutForm = showCheckout && state && (
     <>
+      {!hosted && ready("choose-recovery") && (
+        <form className="demo-mandate" onSubmit={event => { event.preventDefault(); void walletAction("choose-recovery", "Confirm recovery account"); }}>
+          <label htmlFor="checkout-recovery">Recovery account · {state.beneficiary}</label>
+          <input id="checkout-recovery" value={state.pending_beneficiary ?? beneficiaryInput}
+            onChange={event => setBeneficiaryInput(event.target.value)} readOnly={!!state.pending_beneficiary}
+            placeholder="account.testnet" autoComplete="off" />
+          <button type="submit" disabled={actionPending || !ownerReady || !(state.pending_beneficiary ?? beneficiaryInput.trim()).endsWith(".testnet")}>
+            {state.pending_beneficiary ? "Retry recovery account confirmation" : "Confirm recovery account"}
+          </button>
+        </form>
+      )}
       {state.max_supplier_limit && (
         <div className="demo-mandate">
           <label htmlFor="supplier">Approved supplier account</label>
@@ -488,6 +559,11 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
                 {ready("recovery-claim") && <button type="button" disabled={actionPending || !recoveryReady}
                   onClick={() => void walletAction("recovery-claim", "File claim from recovery account")}>File claim from recovery account</button>}
               </div>
+              {coverage.retired && state.wallet_code_hash && (
+                replacementVault
+                  ? <a href={`/demo?vault=${encodeURIComponent(replacementVault)}`}>Open replacement wallet</a>
+                  : <button type="button" disabled={actionPending} onClick={() => void setupReplacement()}>Set up replacement wallet</button>
+              )}
               {ready("rotate-agent") && <form onSubmit={event => { event.preventDefault(); void walletAction("rotate-agent", "Replacement agent connected"); }}>
                 <p className="demo-description">Create a fresh key in the replacement runtime with <code>bun scripts/agent.ts init .agsurance-agent.key</code>. Paste the public key below. The recovery account funds {near(state.agent_funding ?? "0")} for the replacement.</p>
                 <label htmlFor="replacement-public-key">Replacement agent public key</label>
@@ -497,7 +573,50 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
               </form>}
             </section>
           )}
+          {state?.vendorConfirmation && (
+            <p className="demo-id">Vendor {state.vendorConfirmation.vendor} confirmed {state.vendorConfirmation.new_supplier}
+              {" "}until {new Date(state.vendorConfirmation.expires_at * 1000).toLocaleString()}.</p>
+          )}
           <h3 id="claim-review">Claim review</h3>
+          {(!hosted || recoveryPreview) && ready("submit-observed") && (
+            <section className="demo-agent" aria-labelledby="observe-transfers">
+              <h4 id="observe-transfers">Check finalized wallet transfers</h4>
+              <button type="button" disabled={actionPending} onClick={() => void inspectObserved("watch")}>Scan recent transfers</button>
+              <p className="demo-description">Recent activity comes from NearBlocks. NEAR RPC verifies the receipts.</p>
+              <div className="demo-mandate">
+                <label htmlFor="observed-transactions">Transaction hash and signer, one pair per line</label>
+                <textarea id="observed-transactions" rows={3} value={observedRefs} onChange={event => {
+                  setObservedRefs(event.target.value);
+                  setObservedSelection(undefined);
+                }} />
+                <button type="button" disabled={actionPending || !observedRefs.trim()} onClick={() => void inspectObserved("inspect")}>Check these transfers</button>
+              </div>
+              {observedSelection?.policy === policyKey && (
+                <div>
+                  <p>{selectedTransfers.length} eligible transfer(s) · {near(observedTotal.toString())}</p>
+                  {selectedTransfers.map(({ receipt, action_index }) => (
+                    <p key={`${receipt.receipt_id}/${action_index}`} className="demo-id">{near(receipt.amount)} to {receipt.recipient} ·{" "}
+                      <a href={`${explorer}${receipt.transaction_hash}/receipts`}>View receipt</a></p>
+                  ))}
+                  <button type="button" disabled={actionPending || !ownerReady || selectedTransfers.length > 8 || observedTotal <= BigInt(state?.deductible ?? "0")}
+                    onClick={() => void walletAction("submit-observed", "Submit transfer evidence")}>Submit transfer evidence</button>
+                </div>
+              )}
+            </section>
+          )}
+          {observedClaim && (
+            <section className="demo-agent" aria-labelledby="submitted-transfers">
+              <h4 id="submitted-transfers">Submitted transfer evidence</h4>
+              <p className="demo-id">Evidence hash · {observedClaim.evidence_hash}</p>
+              {observedClaim.transfers.map(({ receipt, action_index }) => (
+                <p key={`${receipt.receipt_id}/${action_index}`} className="demo-id">{near(receipt.amount)} to {receipt.recipient} ·{" "}
+                  <a href={`${explorer}${receipt.transaction_hash}/receipts`}>View receipt</a></p>
+              ))}
+              {status === "InReview" && <button type="button" disabled={actionPending}
+                onClick={() => void inspectObserved("review")}>Verify submitted transfers</button>}
+              {observedVerified && <p>{observedReview.verified ? "The finalized receipts match." : "The receipts do not match the submitted evidence."}</p>}
+            </section>
+          )}
           {policy?.escalated_at && (
             <p className="demo-description">
               Escalation recorded {new Date(policy.escalated_at * 1000).toLocaleString()}.
@@ -507,7 +626,7 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
           {status === "InReview" && reviewDeadline && !policy?.escalated_at &&
             <p className="demo-description">Panel review deadline · {new Date(reviewDeadline * 1000).toLocaleString()}</p>}
           <dl className="demo-amounts">
-            <div><dt>Recorded loss</dt><dd>{incident ? near(incident.amount) : "—"}</dd></div>
+            <div><dt>Recorded loss</dt><dd>{observedClaim && policy ? near(policy.loss) : incident ? near(incident.amount) : "—"}</dd></div>
             <div><dt>Deductible</dt><dd>{state ? near(state.deductible) : "—"}</dd></div>
             <div><dt>Approvals</dt><dd>{voteCount} / 2 required</dd></div>
             <div className={status === "Paid" && !zeroSettlement ? "demo-reimbursed" : ""}>
@@ -515,7 +634,7 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
               <dd>{policy && (policy.payout !== "0" || zeroSettlement) ? near(policy.payout) : "—"}</dd>
             </div>
           </dl>
-          {policy?.mandate && status === "InReview" && (
+          {!observedClaim && policy?.mandate && status === "InReview" && (
             <div className="demo-mandate">
               <label htmlFor="loss-transaction">Simulated loss transaction hash</label>
               <input id="loss-transaction" value={lossTx} onChange={event => setLossInput({ policy: policyKey, hash: event.target.value })} disabled={hosted || !!policy.evidence} />
@@ -537,7 +656,7 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
               ? button("escalate", "Record escalation", true)
               : null}
           </div>
-          {!hosted && claimRecovery && policy && !["Active", "CheckingEvidence"].includes(policy.phase) && (
+          {(!hosted || recoveryPreview) && claimRecovery && policy && !["Active", "CheckingEvidence"].includes(policy.phase) && (
             <section className="demo-agent" aria-labelledby="claim-recovery">
               <h3 id="claim-recovery">Recovered claim funds</h3>
               <dl className="demo-amounts">
@@ -551,12 +670,12 @@ export function DemoConsole({ hosted = false }: { hosted?: boolean }) {
                 <div><dt>Owed to recovery account</dt><dd>{near(claimRecovery.beneficiary_claimable)}</dd></div>
                 <div><dt>Owed to reserve</dt><dd>{near(claimRecovery.reserve_claimable)}</dd></div>
               </dl>
-              {ready("record-claim-recovery") && (
+              {ready("record-claim-recovery") && (!hosted || (claimRecovery.recovered_before_payout === "0" && policy.phase !== "Paid")) && (
                 <form onSubmit={event => { event.preventDefault(); void walletAction("record-claim-recovery", "Recovered claim funds recorded"); }}>
                   <p className="demo-description">{status === "Paid" ? "Deposit NEAR recovered from this incident after recovery costs to split it under the claim’s recovery rules."
                     : "Deposit NEAR recovered from this incident after recovery costs to reduce the remaining claim payout."} Maximum: {near(outstandingLoss.toString())}.</p>
                   <label htmlFor="recovered-near">Recovered amount to send (NEAR)</label>
-                  <input id="recovered-near" inputMode="decimal" value={recoveryInput}
+                  <input id="recovered-near" readOnly={hosted} inputMode="decimal" value={recoveryInput}
                     onChange={event => setRecoveredNear({ policy: policyKey, amount: event.target.value })} />
                   <button type="submit" disabled={actionPending || !recoveryReady || !canReportRecovery}>Send recovered funds</button>
                   {!recoveryReady && <button type="button" disabled={!!pending} onClick={() => void connectWallet("recovery")}>Connect recovery wallet</button>}

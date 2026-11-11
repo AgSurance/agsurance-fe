@@ -7,11 +7,16 @@ export type Evidence = {
   transaction_hash: string; receipt_id: string; block_height: number; recipient: string; amount: string;
   block_timestamp_ms?: number;
 };
+export type TransferEvidence = { receipt: Evidence; action_index: number; signer_id: string };
+export type ObservedClaim = {
+  transfers: TransferEvidence[]; evidence_hash: string; approving: number; rejecting: number; rejection_reason?: string | null;
+};
+export type VendorConfirmation = { vendor: string; new_supplier: string; expires_at: number };
 export type Policy = {
   id: number; phase: Phase; votes: number; loss: string; payout: string; activation_height?: number;
   review_deadline?: number | null; escalated_at?: number | null;
   windows?: (number | null)[];
-  mandate?: Mandate; incident?: Incident | null; evidence?: Evidence | null;
+  mandate?: Mandate; incident?: Incident | null; evidence?: Evidence | null; observed_claim?: ObservedClaim | null;
 };
 export type Incident = { policy_id: number; amount: string; recipient: string; block_height: number };
 export type Agent = { account_id: string; public_key: string; connected: boolean };
@@ -36,10 +41,10 @@ export type Dashboard = {
   owner?: string; agent?: Agent | null; agent_funding?: string;
   wallet_funding?: string; max_supplier_limit?: string;
   checkout?: { policy_id: number; phase: "Booking" | "Funding" | "Releasing" | "ReleaseAvailable" | "Refunding" | "RefundAvailable" } | null;
-  chain_time?: number; wallet?: string;
+  chain_time?: number; wallet?: string; wallet_code_hash?: string | null; recovery_choice_available?: boolean; pending_beneficiary?: string | null;
 };
-export type DemoState = Dashboard & { incident: Incident | null; wallet: string; vault: string; runner: string; suggestedSupplier?: string; demoOwner: boolean; demoRecovery?: boolean; operatingBalance?: string; payoutProof?: Activity; lossProof?: Activity; recoveryProof?: Activity; reserveStatus?: ReserveStatus; status?: AppStatus; blockHeight?: number };
-export type Step = "buy" | "loss" | "submit" | "review1" | "review2" | "review3" | "pay" | "connect" | "revoke" | "refund" | "pause" | "recover" | "premium-refund" | "recovery-claim" | "rotate-agent" | "resume-wallet" | "record-claim-recovery" | "distribute-claim-recovery" | "escalate" | "close";
+export type DemoState = Dashboard & { incident: Incident | null; wallet: string; vault: string; runner: string; suggestedSupplier?: string; demoOwner: boolean; demoRecovery?: boolean; operatingBalance?: string; payoutProof?: Activity; lossProof?: Activity; recoveryProof?: Activity; reserveStatus?: ReserveStatus; status?: AppStatus; blockHeight?: number; vendorConfirmation?: VendorConfirmation | null };
+export type Step = "choose-recovery" | "submit-observed" | "buy" | "loss" | "submit" | "review1" | "review2" | "review3" | "pay" | "connect" | "revoke" | "refund" | "pause" | "recover" | "premium-refund" | "recovery-claim" | "rotate-agent" | "resume-wallet" | "record-claim-recovery" | "distribute-claim-recovery" | "escalate" | "close";
 export type Activity = { label: string; actor: string; hash: string; receipt?: string; policyId?: number; vault?: string };
 export type TransactionReference = { transactionHash: string; signerId: string };
 type Action = Step | "pay-supplier" | "renew" | "agent-claim";
@@ -113,7 +118,8 @@ export function projectStatus(
     renewal: projectRenewal(state, chainTime),
     pendingTransaction,
     actions: {
-      buy: checkout || connecting || coverage?.renewal_pending ? "pending" : coverage?.paused ? "wallet_paused"
+      "choose-recovery": state.recovery_choice_available && !checkout ? "available" : "policy_state",
+      buy: checkout || state.pending_beneficiary || connecting || coverage?.renewal_pending ? "pending" : coverage?.paused ? "wallet_paused"
         : !buying ? "policy_state" : shortfall ? "reserve_shortfall" : capacityFull ? "no_capacity" : "available",
       refund: checkout?.phase === "RefundAvailable" || checkout?.phase === "ReleaseAvailable" ? "available" : "policy_state",
       close: !filingDeadline || !["Active", "Rejected", "Closing"].includes(phase ?? "") ? "policy_state"
@@ -133,6 +139,7 @@ export function projectStatus(
       "distribute-claim-recovery": recovery && (BigInt(recovery.beneficiary_claimable) > BigInt(0) && BigInt(recovery.beneficiary_pending) === BigInt(0)
         || BigInt(recovery.reserve_claimable) > BigInt(0) && BigInt(recovery.reserve_pending) === BigInt(0)) ? "available" : "policy_state",
       loss: !active || hasLoss ? "policy_state" : coverage?.paused ? "wallet_paused" : coverage && !coverage.active ? "coverage_inactive" : "available",
+      "submit-observed": !state.wallet_code_hash || !active ? "policy_state" : filingClosed ? "filing_closed" : "available",
       submit: !state.owner || allowOwnerClaim ? claim : "policy_state",
       review1: review(1), review2: review(2), review3: review(4),
       escalate: phase !== "InReview" || !policy?.review_deadline || policy.escalated_at ? "policy_state"

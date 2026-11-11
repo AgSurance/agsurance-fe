@@ -2,7 +2,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { KeyPair } from "@near-js/crypto";
 import { call, PendingTransactionError, readDashboard, reconcileTransaction, transact, TransactionFailedError, type SignedReference } from "../src/lib/demo-near";
-import { parseNear, projectStatus, type TransactionReference } from "../src/lib/demo-state";
+import { parseNear, projectStatus, type DemoState, type TransactionReference } from "../src/lib/demo-state";
+import { inspectObservedTransfers, watchWallet } from "../src/lib/observed-transfers";
 import { clearPending, readPending, recordPending } from "../src/lib/pending-transaction";
 
 const [command, target, keyFile, recipient, amount] = process.argv.slice(2);
@@ -17,8 +18,8 @@ async function main() {
   }
 
   if (!target || !/^[a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.testnet$/.test(target) ||
-      !["status", "submit-claim", "pay", "renew", "reconcile"].includes(command)) {
-    throw new Error("Usage: agent.ts init KEY_FILE | status VAULT | submit-claim VAULT KEY_FILE | pay VAULT KEY_FILE RECIPIENT AMOUNT_NEAR | renew VAULT KEY_FILE | reconcile VAULT");
+      !["status", "watch", "submit-observed", "submit-claim", "pay", "renew", "reconcile"].includes(command)) {
+    throw new Error("Usage: agent.ts init KEY_FILE | status VAULT | submit-claim VAULT KEY_FILE | pay VAULT KEY_FILE RECIPIENT AMOUNT_NEAR | renew VAULT KEY_FILE | reconcile VAULT | watch VAULT | submit-observed VAULT KEY_FILE REFERENCES_JSON");
   }
   const file = join(".agsurance-demo", `${target}-agent-pending.json`);
   const pending = await readPending<SignedReference & { command: string }>(file);
@@ -38,9 +39,14 @@ async function main() {
     }
     return;
   }
-  if (pending && command !== "status") throw new PendingTransactionError(pending);
+  if (pending && command !== "status" && command !== "watch") throw new PendingTransactionError(pending);
   const dashboard = await readDashboard(target);
   const status = projectStatus(dashboard, pending && { transactionHash: pending.transactionHash, signerId: pending.signerId });
+  const state = { ...dashboard, vault: target } as DemoState;
+  if (command === "watch") {
+    console.log(JSON.stringify(await watchWallet(state), null, 2));
+    return;
+  }
   if (command === "status") {
     console.log(JSON.stringify({
       network: "testnet", vault: target, policy: dashboard.policy, agent: dashboard.agent,
@@ -102,6 +108,16 @@ async function main() {
       status: "Paid supplier", recipient, amountNear: amount,
       transactionHash: outcome.hash, explorerUrl: `${explorer}${outcome.hash}/receipts`,
     }, null, 2));
+    return;
+  }
+  if (command === "submit-observed") {
+    if (status.actions["submit-observed"] !== "available" || !recipient) {
+      throw new Error("Pass a JSON file with transactionHash and signerId for each reference on an eligible policy.");
+    }
+    const refs = JSON.parse(await readFile(recipient, "utf8")) as TransactionReference[];
+    const transfers = await inspectObservedTransfers(state, refs);
+    const outcome = await send("submit_evidence_claim", { policy_id: policy.id, transfers });
+    console.log(JSON.stringify({ status: "InReview", transactionHash: outcome.hash, explorerUrl: `${explorer}${outcome.hash}` }));
     return;
   }
   if (status.actions["agent-claim"] !== "available") throw new Error(`Claim unavailable: ${status.actions["agent-claim"]}`);

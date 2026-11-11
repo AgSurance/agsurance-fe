@@ -7,6 +7,10 @@ export const hostedSteps = new Set<Step | "reconcile">([
   "buy", "refund", "loss", "submit", "review1", "review2", "review3", "pay", "reconcile",
 ]);
 
+export function hostedRecoveryPreview() {
+  return process.env.VERCEL_ENV === "preview" && process.env.AGSURANCE_RECOVERY_PREVIEW === "1";
+}
+
 function redisConfig() {
   return {
     endpoint: process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL,

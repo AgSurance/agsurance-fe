@@ -154,6 +154,19 @@ The filing window ends 48 hours after the policy ends or the wallet retires earl
 
 A failed transfer retains the approved claim and its allocation. Retry through **Pay claim** or **Check or retry payout**. A collateral shortfall pauses new policies and payouts while claim filing and review remain available.
 
+### Claims from observed NEAR transfers
+
+New testnet vaults pin the wallet code at setup. In the local console, select **Scan recent transfers**, or enter a finalized transaction hash and its signer. The scan uses NearBlocks to find recent candidate transactions. NEAR RPC checks the successful transfer, source wallet, recipient, amount, policy window, and wallet code at execution. An observed bundle can contain up to eight transfer actions. The current checks flag a different recipient or an individual amount over the spending limit.
+
+```sh
+bun scripts/agent.ts watch <vault.testnet>
+bun scripts/agent.ts submit-observed <vault.testnet> .agsurance-agent.key references.json
+```
+
+The reference file is a JSON array of objects with `transactionHash` and `signerId`. The agent needs an active grant to file. The reviewer console checks the bundle against final NEAR receipts before each reviewer votes. Two matching votes are required to approve it.
+
+Before checkout, the owner can register a separate recovery account once. After the old wallet is retired, set `AGSURANCE_WASM_DIR` to the directory containing the three compiled contracts, restart the local app, and select **Set up replacement wallet**. The operator needs testnet funds to deploy the new wallet and vault. The new vault reuses the recovery account and reserve. The console links back to the retired wallet and its claims. The current supplier can confirm a new address via `confirm_vendor_change`; checkout on the replacement wallet uses that address only after the owner confirms it.
+
 ### Recovered claim funds
 
 The registered recovery account can attach funds recovered from the incident after any external recovery costs. Before payout, the deposit reduces the loss used to calculate the payout. A zero payout settles the claim and releases its reserve allocation.
@@ -169,7 +182,7 @@ Provision fresh contracts. Set `AGSURANCE_PILOT_VALIDATOR` to an approved stakin
 3. After a policy ends and its claim is settled or its allocation released, call `settle_earned_premiums(policy_id)` on the vault. Settle any unused premium refund first. An uninterrupted, fully paid term qualifies for the 20% testnet cashback. The reserve credits 70% of the remaining earned premium to the cohort and the balance to the operator. The owner and operator use `withdraw_pilot_income` to collect their credits.
 4. Once all policies and validator transfers are settled, the operator can call `close_capital_pilot`. Each provider calls `claim_capital_pilot` and `withdraw_pilot_income` to collect its share of the remaining collateral, earned premiums, and staking rewards received by the reserve. Capital is at risk until closure. A provider can claim its share of any later recovery that reaches the reserve.
 
-The recovery and cashback flows passed in NEAR Sandbox. The staking flow was tested with a simulated validator in the sandbox.
+The recovery and cashback flows passed in NEAR Sandbox. A separate testnet pilot delegated 0.05 NEAR to an active validator and started unbonding. Withdrawal and realized staking rewards are pending. [Delegation](https://testnet.nearblocks.io/txns/6xhbspGPdjQAabzeCHiNJ6jrsb2f9MroJKQu397aFmgp/receipts) · [Unstake](https://testnet.nearblocks.io/txns/BqTHkxn8xrebaeqRqvZmMFLQXjrjPaecmYXJBPm9Tvo1/receipts)
 
 ## Live regression checks
 
@@ -194,6 +207,8 @@ bun scripts/prepare-hosted-demo.ts /path/to/private-invites /path/to/slot-a/.env
 ```
 
 Set the sensitive production variable `AGSURANCE_DEMO_INVITES` to the contents of `accounts.json`. Redeploy the app. Give each judge a separate code from `invite-codes.txt` and the hosted `/demo` link. Keep both files outside the deployed directory. Keep the local operator's signing configuration and keys on the local machine.
+
+For a recovery Preview, prepare separate invite accounts from a newly deployed testnet vault. Set `AGSURANCE_RECOVERY_PREVIEW=1` in the Vercel Preview environment and configure the invites and Redis for that environment. The invite console can submit observed evidence from the simulated loss and add one 0.05 NEAR recovery before payout. Recovery-account setup and replacement provisioning use the local console.
 
 ## Credits
 

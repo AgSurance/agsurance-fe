@@ -4,20 +4,22 @@ import { join } from "node:path";
 import { cookies } from "next/headers";
 import { PublicKey } from "@near-js/crypto";
 import { call, PendingTransactionError, readDashboard, reconcileTransaction, rpc, transact, TransactionFailedError, transferReceipt, view, type DemoAccounts, type SignedReference } from "../../../lib/demo-near";
+import { inspectObservedTransfers, verifyObservedClaim, watchWallet } from "../../../lib/observed-transfers";
+import { provisionReplacement, selectDemoVault } from "../../../lib/replacement-wallet";
 import { verifyLossEvidence } from "../../../lib/claim-evidence";
-import { checkoutTotal, evidenceIsCovered, projectStatus, type Activity, type Dashboard, type Mandate, type RecoveryRecipient, type Step } from "../../../lib/demo-state";
+import { checkoutTotal, evidenceIsCovered, projectStatus, type Activity, type Dashboard, type Mandate, type RecoveryRecipient, type Step, type TransactionReference, type VendorConfirmation } from "../../../lib/demo-state";
 import { clearPending, readPending, recordPending } from "../../../lib/pending-transaction";
-import { demoCookie, hostedDemoOrigin, hostedJournal, hostedSteps, inviteAccounts } from "../../../lib/hosted-demo";
+import { demoCookie, hostedDemoOrigin, hostedJournal, hostedRecoveryPreview, hostedSteps, inviteAccounts } from "../../../lib/hosted-demo";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 let busy = false;
 
-async function config() {
+async function config(request: Request) {
   if (process.env.VERCEL === "1") return inviteAccounts((await cookies()).get(demoCookie)?.value);
 
   const raw = process.env.AGSURANCE_DEMO_ACCOUNTS;
-  return raw ? JSON.parse(raw) as DemoAccounts : null;
+  return raw ? selectDemoVault(JSON.parse(raw) as DemoAccounts, new URL(request.url).searchParams.get("vault")) : null;
 }
 
 const proofDirectory = join(process.cwd(), ".agsurance-demo");
@@ -57,10 +59,11 @@ async function snapshot(accounts: DemoAccounts) {
   ]);
   const policy = dashboard.policy;
   const hosted = process.env.VERCEL === "1";
-  const [payoutProof, recoveryProof, lossProof] = await Promise.all([
+  const [payoutProof, recoveryProof, lossProof, vendorConfirmation] = await Promise.all([
     policy?.phase === "Paid" ? readProof(accounts.vault, policy.id, "pay") : undefined,
     policy && dashboard.coverage?.retired ? readProof(accounts.vault, policy.id, "recover") : undefined,
     hosted && policy && dashboard.incident?.policy_id === policy.id ? readProof(accounts.vault, policy.id, "loss") : undefined,
+    !hosted && policy && dashboard.wallet_code_hash ? view<VendorConfirmation | null>(accounts.vault, "vendor_confirmation", { policy_id: policy.id }) : undefined,
   ]);
   const status = projectStatus(dashboard, pending && {
     transactionHash: pending.transactionHash, signerId: pending.signerId,
@@ -69,7 +72,7 @@ async function snapshot(accounts: DemoAccounts) {
     ...dashboard, incident: dashboard.incident ?? null, wallet: accounts.wallet, vault: accounts.vault, runner: accounts.runner.id,
     suggestedSupplier: accounts.supplier,
     demoRecovery: accounts.recovery?.id === dashboard.beneficiary,
-    demoOwner: (dashboard.owner ?? accounts.owner.id) === accounts.owner.id, payoutProof, recoveryProof, lossProof, status,
+    demoOwner: (dashboard.owner ?? accounts.owner.id) === accounts.owner.id, payoutProof, recoveryProof, lossProof, vendorConfirmation, status,
   };
 }
 
@@ -107,10 +110,23 @@ async function finishStep(accounts: DemoAccounts, pending: PendingStep) {
 
 export async function GET(request: Request) {
   const hosted = process.env.VERCEL === "1";
-  const accounts = await config();
+  const accounts = await config(request);
   if (!accounts) return unavailable(hosted);
   try {
     const params = new URL(request.url).searchParams;
+    const observed = params.get("observed");
+    if (observed && (!hosted || hostedRecoveryPreview())) {
+      const state = await snapshot(accounts);
+      if (observed === "watch") return Response.json(await watchWallet(state));
+      if (observed === "review") return Response.json({ verified: await verifyObservedClaim(state) });
+      if (observed === "inspect") {
+        const refs = params.getAll("ref").map(value => {
+          const [transactionHash, signerId] = value.trim().split(/\s+/);
+          return { transactionHash, signerId };
+        });
+        return Response.json(await inspectObservedTransfers(state, refs));
+      }
+    }
     const lossTx = params.get("loss_tx");
     if (lossTx) return Response.json(await verifyLossEvidence(await snapshot(accounts), lossTx));
     const hash = params.get("owner_tx");
@@ -118,7 +134,7 @@ export async function GET(request: Request) {
       if (hosted) return Response.json({ error: "Use the demo signer for this session." }, { status: 403 });
       const method = params.get("method");
       const recoveryMethod = method != null && ["pause_wallet", "recover_wallet", "refund_unused_premium", "submit_claim", "rotate_agent", "resume_wallet", "record_claim_recovery"].includes(method);
-      if (!method || (!recoveryMethod && !["buy_policy", "connect_agent", "revoke_agent", "retry_checkout_refund"].includes(method))) {
+      if (!method || (!recoveryMethod && !["buy_policy", "connect_agent", "revoke_agent", "retry_checkout_refund", "choose_recovery_account", "submit_evidence_claim"].includes(method))) {
         return Response.json({ error: "Invalid owner action." }, { status: 400 });
       }
       if (!/^[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(hash)) {
@@ -144,12 +160,18 @@ export async function GET(request: Request) {
           transaction.signer_id !== signer || transaction.receiver_id !== accounts.vault || action?.method_name !== method) {
         return Response.json({ code: "transaction_mismatch", error: "The transaction does not match the requested owner action." }, { status: 409 });
       }
-      if (recoveryMethod || method === "connect_agent" || method === "revoke_agent" || (method === "retry_checkout_refund" && params.has("policy_id"))) {
+      if (recoveryMethod || method === "connect_agent" || method === "revoke_agent" || method === "submit_evidence_claim" || (method === "retry_checkout_refund" && params.has("policy_id"))) {
         const args = JSON.parse(Buffer.from(action.args, "base64").toString()) as { policy_id: number; public_key?: string };
         if (String(args.policy_id) !== params.get("policy_id") ||
             (["connect_agent", "rotate_agent"].includes(method) && args.public_key !== params.get("public_key")) ||
             (method === "record_claim_recovery" && action.deposit !== params.get("deposit"))) {
           return Response.json({ code: "transaction_mismatch", error: "The transaction does not match the requested policy or agent key." }, { status: 409 });
+        }
+      }
+      if (method === "choose_recovery_account") {
+        const args = JSON.parse(Buffer.from(action.args, "base64").toString()) as { beneficiary?: string };
+        if (args.beneficiary !== params.get("beneficiary")) {
+          return Response.json({ error: "The transaction chose another recovery account." }, { status: 409 });
         }
       }
       if (method === "buy_policy" && params.has("supplier")) {
@@ -187,7 +209,7 @@ export async function POST(request: Request) {
   const allowedOrigin = hosted ? hostedDemoOrigin(request)
     : /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host) && request.headers.get("origin") === `http://${host}`;
   if (!allowedOrigin) return Response.json({ error: "Invalid demo request origin." }, { status: 403 });
-  const accounts = await config();
+  const accounts = await config(request);
   if (!accounts) return unavailable(hosted);
 
   let release: (() => Promise<void>) | undefined;
@@ -201,12 +223,13 @@ export async function POST(request: Request) {
     }
     if (!release) return Response.json({ error: "Wait for the pending transaction and refresh the dashboard." }, { status: 409 });
 
-    const { step, publicKey, mandate, lossTx, recoveredAmount, recipient, expectedPolicyId, expectedCheckoutId } = await request.json() as {
-      step: Step | "reconcile"; publicKey?: string; mandate?: Mandate; lossTx?: string;
-      recoveredAmount?: string; recipient?: RecoveryRecipient;
+    const { step, publicKey, mandate, lossTx, recoveredAmount, recipient, beneficiary, refs, expectedPolicyId, expectedCheckoutId } = await request.json() as {
+      step: Step | "reconcile" | "prepare-replacement"; publicKey?: string; mandate?: Mandate; lossTx?: string;
+      recoveredAmount?: string; recipient?: RecoveryRecipient; beneficiary?: string; refs?: TransactionReference[];
       expectedPolicyId?: number | null; expectedCheckoutId?: number | null;
     };
-    if (hosted && !hostedSteps.has(step)) {
+    const previewAction = hostedRecoveryPreview() && ["submit-observed", "record-claim-recovery", "distribute-claim-recovery"].includes(step);
+    if (hosted && (step === "prepare-replacement" || (!hostedSteps.has(step) && !previewAction))) {
       return Response.json({ error: "This action is unavailable in the hosted demo." }, { status: 403 });
     }
     pending = await readDemoPending(accounts.vault);
@@ -223,6 +246,12 @@ export async function POST(request: Request) {
     const current = await snapshot(accounts);
     const policy = current.policy;
     const { status } = current;
+    if (step === "prepare-replacement") {
+      if (!current.coverage?.retired || !current.wallet_code_hash || current.policy?.id !== expectedPolicyId) {
+        return Response.json({ error: "Retire the current wallet before setting up a replacement." }, { status: 409 });
+      }
+      return Response.json(await provisionReplacement(accounts));
+    }
     if (expectedPolicyId !== status.policyId || (step === "refund" && expectedCheckoutId !== status.checkoutPolicyId)) {
       return Response.json({ code: "stale_policy", error: "The policy or checkout changed. Refresh before taking this action." }, { status: 409 });
     }
@@ -232,6 +261,10 @@ export async function POST(request: Request) {
     const args = { policy_id: expectedPolicyId ?? undefined };
     if (step === "record-claim-recovery") {
       const report = current.claim_recovery!;
+      if (hosted && (recoveredAmount !== "50000000000000000000000" || report.recovered_before_payout !== "0" ||
+          (policy?.phase !== "InReview" && policy?.phase !== "Approved"))) {
+        return Response.json({ error: "This Preview accepts one 0.05 NEAR recovery before payout." }, { status: 400 });
+      }
       const available = BigInt(policy!.loss) - BigInt(report.recovered_before_payout) - BigInt(report.recovered_after_payout);
       if (typeof recoveredAmount !== "string" || !/^[1-9]\d{0,38}$/.test(recoveredAmount) || BigInt(recoveredAmount) > available) {
         return Response.json({ error: "Enter a positive amount up to the remaining recorded loss." }, { status: 400 });
@@ -256,15 +289,32 @@ export async function POST(request: Request) {
       return Response.json({ error: "Use the spending rules shown for this testnet demo." }, { status: 400 });
     }
     const reviewing = step === "review1" || step === "review2" || step === "review3";
-    const evidence = reviewing && policy?.mandate
+    if (step === "choose-recovery") {
+      if (typeof beneficiary !== "string" || !/^(?=.{2,64}$)[a-z0-9]+(?:[._-][a-z0-9]+)*\.testnet$/.test(beneficiary)) {
+        return Response.json({ error: "Enter an existing named testnet recovery account." }, { status: 400 });
+      }
+      await rpc("query", { request_type: "view_account", account_id: beneficiary, finality: "final" });
+    }
+    const transfers = step === "submit-observed" ? await inspectObservedTransfers(current, refs ?? []) : undefined;
+    if (transfers && (!transfers.length || transfers.length > 8)) {
+      return Response.json({ error: "Select one to eight eligible transfers." }, { status: 400 });
+    }
+    const bundle = policy?.observed_claim;
+    const evidence = reviewing && policy?.mandate && !bundle
       ? await verifyLossEvidence(current, (hosted ? current.lossProof?.hash : lossTx ?? policy.evidence?.transaction_hash) ?? "")
       : undefined;
-    const reject = !!evidence && !evidenceIsCovered(current, evidence);
-    const vote = call(reject ? "reject_claim" : "approve_claim", { ...args, evidence });
+    const reject = reviewing && bundle ? !await verifyObservedClaim(current) : !!evidence && !evidenceIsCovered(current, evidence);
+    const vote = bundle ? call("vote_evidence_claim", { ...args, evidence_hash: bundle.evidence_hash,
+      approve: !reject, reason: reject ? "Final receipt does not match the claim bundle" : null,
+    }) : call(reject ? "reject_claim" : "approve_claim", { ...args, evidence });
     const recovery = current.demoRecovery ? accounts.recovery : undefined;
     const owner = current.demoOwner ? accounts.owner : undefined;
     const voteLabel = reject ? "voted to reject" : "approved";
     const commands = {
+      "choose-recovery": { actor: owner, target: accounts.vault,
+        action: call("choose_recovery_account", { beneficiary }), label: "Recovery account confirmed" },
+      "submit-observed": { actor: owner, target: accounts.vault,
+        action: call("submit_evidence_claim", { ...args, transfers }), label: "Transfer evidence submitted" },
       buy: { actor: owner, target: accounts.vault,
         action: call("buy_policy", { ...(mandate ?? {}), expected_policy_id: expectedPolicyId ?? 0 }, BigInt(checkoutTotal(current))), label: "Policy activated" },
       refund: { actor: owner, target: accounts.vault,
