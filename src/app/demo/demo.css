@@ -60,3 +60,16 @@
 .demo-mandate input[aria-invalid="true"] { border-color: var(--color-deep-blue); }
 .demo-field-error { font-weight: 600; }
 .demo-mandate button { width: fit-content; }
+
+.demo-run { margin-bottom: 16px; scroll-margin-top: 16px; }
+.demo-run h2 { font-size: clamp(2rem, 4vw, 3.25rem); }
+.demo-run-accounts { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 16px 0; }
+.demo-run-accounts dt { font-weight: 600; }
+.demo-run-trail { list-style: none; padding: 0; margin: 0; }
+.demo-run-trail li { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 18px; padding: 10px 0; border-top: 1px solid var(--dark-line); }
+.demo-run-trail .demo-description, .demo-run-trail .demo-proof { margin: 0; }
+.demo-run-trail li:last-child { border-bottom: 1px solid var(--dark-line); }
+@media (max-width: 600px) {
+  .demo-run-trail li { grid-template-columns: 1fr; }
+}
+.demo-run-links { display: flex; flex-wrap: wrap; gap: 4px 12px; }

@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { demoCookie, hostedDemoEnabled, hostedRecoveryPreview, inviteAccounts } from "../../lib/hosted-demo";
 import { DemoConsole } from "./demo-console";
+import { CliRun } from "./cli-run";
 import "./demo.css";
 
 export default async function DemoPage({ searchParams }: { searchParams: Promise<{ invite?: string }> }) {
@@ -22,12 +23,13 @@ export default async function DemoPage({ searchParams }: { searchParams: Promise
         <span>NEAR TESTNET</span>
       </header>
       <section className="demo-intro">
-        <p className="eyebrow"><span /> {live || enabled ? "LIVE COVERAGE DEMO" : "PUBLIC CLAIM REPLAY"}</p>
+        <p className="eyebrow"><span /> {live ? "LIVE COVERAGE DEMO" : "PUBLIC TESTNET EVIDENCE"}</p>
         <h1>From policy to <em>payout.</em></h1>
-        <p>{live || enabled
+        <p>{live
           ? "Buy a policy, simulate a loss, and follow the claim through to a new payout on NEAR testnet."
-          : "Follow a completed claim and view its receipts on NEAR testnet."}</p>
+          : "Follow a completed CLI run and check its receipts on NEAR testnet."}</p>
       </section>
+      {hosted && <CliRun />}
       {live ? <DemoConsole hosted={hosted} recoveryPreview={hostedRecoveryPreview()} /> : (
         <>
           {enabled && <section className="demo-panel" aria-labelledby="invite-heading">

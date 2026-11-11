@@ -2,13 +2,24 @@
 
 AgSurance gives AI agents a payment account with loss coverage on NEAR testnet. The owner chooses a supplier and sets a spending limit. The agent can pay that supplier from its own runtime. If the demo records a loss, reviewers examine the transfer before a separate reserve pays the claim.
 
-[Open the hosted demo](https://agsurance.vercel.app/demo) · [Open the public replay](https://agsurance.github.io/agsurance-fe/) · [View the 0.25 NEAR payout receipt](https://testnet.nearblocks.io/txns/6EUqDWKJxeoTz8MXnWiCpS8cGGyuguvrhHuLmFqtPtDq/receipts) · [Read the Rust contracts](https://github.com/AgSurance/agsurance-sc)
+[Inspect the CLI run](https://agsurance-judge-preview.vercel.app/demo#cli-run) · [Try a new run with an invite](https://agsurance-judge-preview.vercel.app/demo#demo-invite) · [Read the Rust contracts](https://github.com/AgSurance/agsurance-sc)
 
-## Try AgSurance
+## Verify one CLI run on NEAR testnet
 
-Open the public replay to follow a recorded claim without a wallet. Open the payout receipt to see the amount and the recipient on NEAR testnet.
+Open the public receipts in order. The transactions use the same vault and policy. The claim ID is `vault.agsurance-7910a4d8.testnet/1`.
 
-If you have a demo invite, enter the code on the hosted `/demo` page. The hosted console can buy a policy, simulate a loss, submit a claim as the demo owner, and pay it after two approvals. It currently uses the original testnet contracts. Use a fresh local setup for the agent CLI, credential replacement, and recovered claim funds.
+| Action | Result | Evidence |
+| --- | --- | --- |
+| Buy coverage and connect the agent | The owner sets the supplier and a 0.05 NEAR spending limit, then grants the agent access. | [Checkout](https://testnet.nearblocks.io/txns/9z5JCov2sVrZYE3gN9nyE4vBmtHe9KZYiwAZVGzH62pw/receipts) · [Agent grant](https://testnet.nearblocks.io/txns/32tQ1gya41MBpNtBWKn6HvPErxp6Acdg9aLMARmauteb/receipts) |
+| Request a payment outside the mandate | The agent requests 0.01 NEAR to the recovery account. The wallet call fails and sends no funds. | [Rejected payment](https://testnet.nearblocks.io/txns/FkB8zVFCydDbMhukMQeB6FHBUDb7xGU2qKhrKcZWzyCz/receipts) |
+| Pay the approved supplier | The same CLI agent sends 0.05 NEAR to the supplier in the mandate. | [Supplier payment](https://testnet.nearblocks.io/txns/9MmWAmKmQWoTUAt9SC4mHbgvsZye4RtMZG5CZz4XDbsx/receipts) |
+| Record a simulated loss | The demo runner sends 0.30 NEAR to a separate test incident account. | [Simulated loss](https://testnet.nearblocks.io/txns/4xLhrcrh6uBeQzqF3YdYiamGR4ysBw2GcQRxVwFpuxa5/receipts) |
+| File the claim and approve it | The agent files from the CLI. Two reviewer accounts approve the same final loss receipt. | [CLI claim](https://testnet.nearblocks.io/txns/FDhbHXvusRjuPNn4X2d7xcZkhZjAuUQjDvVd1N6bxWji/receipts) · [Reviewer 1](https://testnet.nearblocks.io/txns/4QQF7JEdqGjDnyySY3co9RKZLMD3bVA8SwhskPz8RD3X/receipts) · [Reviewer 2](https://testnet.nearblocks.io/txns/8m4Yg68qLei14rVzwwhYEhJ8aSLFyov2E3A7u3Wdp8NH/receipts) |
+| Pay the claim | The reserve transfers **0.25 NEAR** to the registered recovery account after the 0.05 NEAR deductible. | [Final payout](https://testnet.nearblocks.io/txns/Cosun7xKLxeXHMBuqmFecKcFonuGEvFr4Ff8Wdv28bBU/receipts) |
+
+Compare the approved supplier `supplier.agsurance-7910a4d8.testnet` with the simulated loss recipient `incident.agsurance-7910a4d8.testnet`. The payout goes to `recovery.agsurance-7910a4d8.testnet`.
+
+For a new browser run, use an invite on the same demo page. To connect your own agent and run the CLI, follow the local setup below.
 
 ## How the demo works
 
@@ -74,10 +85,11 @@ Open [the local console](http://127.0.0.1:3000/demo). If you set `AGSURANCE_POLI
    bun scripts/agent.ts init .agsurance-agent.key
    ```
 
-3. Replace `<vault.testnet>` and `<supplier.testnet>` with the account IDs from the dashboard. Pay the supplier from the agent runtime.
+3. Use the vault, recovery account, and supplier IDs from the dashboard. Run both payment requests from the agent runtime. The wallet rejects the first request and pays the approved supplier on the second.
 
    ```sh
    bun scripts/agent.ts status <vault.testnet>
+   bun scripts/agent.ts pay <vault.testnet> .agsurance-agent.key <recovery.testnet> 0.01
    bun scripts/agent.ts pay <vault.testnet> .agsurance-agent.key <supplier.testnet> 0.05
    ```
 
@@ -98,12 +110,13 @@ The console stores confirmed payout links by vault and policy in `.agsurance-dem
 | Action | Expected result | Where to look |
 | --- | --- | --- |
 | Buy the policy | The wallet receives 0.35 NEAR. The reserve sets aside 0.40 NEAR. | Policy status and reserve balances |
+| Pay outside the mandate | The wallet rejects the request and sends no funds. | Agent command output and the failed NEAR receipt |
 | Pay the supplier | The approved supplier receives 0.05 NEAR. | Agent command output and NEAR testnet receipt |
 | Simulate the loss | A test transfer of 0.30 NEAR appears. | Transaction trail and loss receipt |
 | Review the claim | Two reviewer accounts approve the same receipt. | Claim review |
-| Pay the claim | The recovery account receives 0.25 NEAR. | [Example payout receipt](https://testnet.nearblocks.io/txns/6EUqDWKJxeoTz8MXnWiCpS8cGGyuguvrhHuLmFqtPtDq/receipts) or the receipt from your run |
+| Pay the claim | The recovery account receives 0.25 NEAR. | [Example payout receipt](https://testnet.nearblocks.io/txns/Cosun7xKLxeXHMBuqmFecKcFonuGEvFr4Ff8Wdv28bBU/receipts) or the receipt from your run |
 
-The public replay also links to a [second payout after a retry](https://testnet.nearblocks.io/txns/6SMehBKzziTS9bvU5SHuATrRK7m9Fc3qZyzQMqwX5enz/receipts) and a [refunded checkout](https://testnet.nearblocks.io/txns/7YsGxdjqYoYsyDQ8WFYPGWXRok78tw1Nk9GbXXCR8Gw7/receipts). A [separate transaction](https://testnet.nearblocks.io/txns/2VbVT7Qh6QnpoT2qNjbj9pWuVLLzXBqfRZMUSF2siDob) shows a claim filed from the agent CLI.
+The [shared-reserve replay](https://agsurance.github.io/agsurance-fe/) covers a separate scenario with two policies, a capacity refund, and a payout retry.
 
 ## Check the frontend
 
