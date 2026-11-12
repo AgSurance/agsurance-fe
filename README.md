@@ -12,6 +12,8 @@ Install Bun, clone this repo, and run this command from the repo root.
 bun run verify:receipts
 ```
 
+[Read the Judge Q&A](docs/judge-qa.md)
+
 The command reads public NEAR testnet receipts and historical policy state from the FastNear archive. It needs internet access and Bun. It needs no wallet, invite code, API key, or dependency install.
 
 - **0.25 NEAR CLI replay.** Check policy activation, the agent grant, the rejected payment, and the approved supplier payment. Follow the separate simulated loss through claim filing, two matching reviewer votes, and the transfer to the registered recovery account.

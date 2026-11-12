@@ -37,6 +37,7 @@ export default async function DemoPage() {
         <div className="demo-run-links">
           <a className="demo-proof" href={receiptUrl(cliPayoutHash)}>0.25 NEAR payout receipt</a>
           <a className="demo-proof" href={receiptUrl(historicalPayoutHash)}>0.18 NEAR payout receipt</a>
+          <a className="demo-proof" href="https://github.com/AgSurance/agsurance-fe/blob/main/docs/judge-qa.md">Judge Q&A</a>
         </div>
       </section>
       <CliRun />
