@@ -53,6 +53,10 @@
 .demo-agent button { width: fit-content; }
 .demo-agent > button { margin-top: 8px; }
 .demo-command { display: grid; gap: 5px; margin-top: 12px; padding: 10px; background: #f7f9ff; overflow-wrap: anywhere; }
+.demo-receipt-command { max-width: 32rem; gap: 0; }
+.demo-receipt-command > div { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; }
+.demo-receipt-command [role="status"]:not(:empty) { margin-top: 5px; }
+.demo-inline-link { text-decoration: underline; color: var(--color-deep-blue); }
 .demo-proof { display: inline-flex; align-items: center; min-height: 44px; margin-top: 8px; text-decoration: underline; color: var(--color-deep-blue); }
 .demo-mandate { display: grid; gap: 6px; margin: 12px 0; }
 .demo-mandate label { font-weight: 600; }
@@ -60,7 +64,7 @@
 .demo-mandate input[aria-invalid="true"] { border-color: var(--color-deep-blue); }
 .demo-field-error { font-weight: 600; }
 .demo-mandate button { width: fit-content; }
-#live-demo, #cli-run, #historical-limit, #duplicate-invoice { scroll-margin-top: 16px; }
+#live-demo, #verify-receipts, #cli-run, #historical-limit, #duplicate-invoice { scroll-margin-top: 16px; }
 .demo-run { margin-bottom: 16px; }
 .demo-run h2 { font-size: clamp(2rem, 4vw, 3.25rem); }
 .demo-run-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 20px; }

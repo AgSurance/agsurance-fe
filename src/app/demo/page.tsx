@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import Image from "next/image";
 import Link from "next/link";
-import { reserveReplayUrl } from "../../lib/demo-links";
+import { cliPayoutHash, historicalPayoutHash, receiptUrl, reserveReplayUrl } from "../../lib/demo-links";
 import { demoCookie, hostedDemoEnabled, hostedRecoveryPreview, inviteAccounts } from "../../lib/hosted-demo";
 import { DemoConsole } from "./demo-console";
 import { CliRun } from "./cli-run";
@@ -9,6 +9,7 @@ import { DuplicateInvoice } from "./duplicate-invoice";
 import { HistoricalLimit } from "./historical-limit";
 import { ManualDemo } from "./manual-demo";
 import { manualDemoContracts } from "../../lib/manual-demo";
+import { ReceiptCommand } from "./receipt-command";
 import "./demo.css";
 
 export default async function DemoPage() {
@@ -28,6 +29,15 @@ export default async function DemoPage() {
       <section className="demo-intro">
         <h1>From policy to payout</h1>
         <p>Open the public transaction receipts for two completed claims on NEAR testnet.</p>
+      </section>
+      <section className="demo-panel demo-run" id="verify-receipts" aria-labelledby="verify-receipts-heading">
+        <h2 id="verify-receipts-heading">Verify both testnet claims</h2>
+        <p>Clone the <a className="demo-inline-link" href="https://github.com/AgSurance/agsurance-fe">AgSurance repo</a> and run this command from its root with Bun. Each successful check prints <code>PASS</code>.</p>
+        <ReceiptCommand />
+        <div className="demo-run-links">
+          <a className="demo-proof" href={receiptUrl(cliPayoutHash)}>0.25 NEAR payout receipt</a>
+          <a className="demo-proof" href={receiptUrl(historicalPayoutHash)}>0.18 NEAR payout receipt</a>
+        </div>
       </section>
       <CliRun />
       <HistoricalLimit />
