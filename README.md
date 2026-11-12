@@ -2,7 +2,7 @@
 
 AgSurance gives AI agents a payment account with loss coverage on NEAR testnet. The owner chooses a supplier and sets a spending limit. The agent can pay that supplier from its own runtime. If the demo records a loss, reviewers examine the transfer before a separate reserve pays the claim.
 
-[Connect Wallet on testnet](https://agsurance-judge-preview.vercel.app/demo#manual-demo) · [Open the 0.25 NEAR CLI replay](https://agsurance-judge-preview.vercel.app/demo#cli-run) · [Inspect the 0.18 NEAR historical payout](https://agsurance-judge-preview.vercel.app/demo#historical-limit) · [Run the verification](#verify-locally) · [Read the Rust contracts](https://github.com/AgSurance/agsurance-sc)
+[Open the live demo](https://agsurance.vercel.app/demo) · [Connect Wallet on testnet](https://agsurance.vercel.app/demo#manual-demo) · [Open the 0.25 NEAR CLI replay](https://agsurance.vercel.app/demo#cli-run) · [Inspect the 0.18 NEAR historical payout](https://agsurance.vercel.app/demo#historical-limit) · [Run the verification](#verify-locally) · [Read the Rust contracts](https://github.com/AgSurance/agsurance-sc)
 
 ## Verify the 0.25 NEAR CLI replay
 
@@ -23,7 +23,7 @@ Compare the approved supplier `supplier.agsurance-7910a4d8.testnet` with the sim
 
 This is a separate NEAR testnet run on policy `v-1cba0c6bad2c3e0cea5b.f.agmaker-dd6ef8.testnet/1`. A [capital deposit](https://testnet.nearblocks.io/txns/81QPfbkG2uhDAKc5HL4NhUCqMJijAd1wkHqdfoGQQ49U/receipts) opened capacity for a previously blocked checkout.
 
-[Open the timeline in the demo](https://agsurance-judge-preview.vercel.app/demo#historical-limit)
+[Open the timeline in the demo](https://agsurance.vercel.app/demo#historical-limit)
 
 | Step | What to check | Evidence |
 | --- | --- | --- |
@@ -47,7 +47,7 @@ NEAR Sandbox downloads its binary on first use. If you already have the official
 
 ## Use your own testnet wallet
 
-Open the [wallet section of the demo](https://agsurance-judge-preview.vercel.app/demo#manual-demo), select **Connect Wallet**, and choose **Buy a policy** or **Provide capital**. Use a funded named testnet wallet to buy a policy. The buyer pays a one-time account storage deposit, then signs the checkout from their wallet. The dashboard displays the exact NEAR funding, premium, payout limit and deductible from the deployed vault. It also shows the agent setup commands after purchase.
+Open the [wallet section of the demo](https://agsurance.vercel.app/demo#manual-demo), select **Connect Wallet**, and choose **Buy a policy** or **Provide capital**. Use a funded named testnet wallet to buy a policy. The buyer pays a one-time account storage deposit, then signs the checkout from their wallet. The dashboard displays the exact NEAR funding, premium, payout limit and deductible from the deployed vault. It also shows the agent setup commands after purchase.
 
 Follow the local setup below to run the CLI with your own agent.
 
