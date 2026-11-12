@@ -2,7 +2,24 @@
 
 AgSurance gives AI agents a payment account with loss coverage on NEAR testnet. The owner chooses a supplier and sets a spending limit. The agent can pay that supplier from its own runtime. If the demo records a loss, reviewers examine the transfer before a separate reserve pays the claim.
 
-[Open the live demo](https://agsurance.vercel.app/demo) · [Connect Wallet on testnet](https://agsurance.vercel.app/demo#manual-demo) · [Open the 0.25 NEAR CLI replay](https://agsurance.vercel.app/demo#cli-run) · [Inspect the 0.18 NEAR historical payout](https://agsurance.vercel.app/demo#historical-limit) · [Run the verification](#verify-locally) · [Read the Rust contracts](https://github.com/AgSurance/agsurance-sc)
+[Open the live demo](https://agsurance.vercel.app/demo) · [Verify both testnet claims](#verify-both-testnet-claims) · [Run the Sandbox checks](#verify-locally) · [Read the Rust contracts](https://github.com/AgSurance/agsurance-sc)
+
+## Verify both testnet claims
+
+Install Bun, clone this repo, and run this command from the repo root.
+
+```sh
+bun run verify:receipts
+```
+
+The command reads public NEAR testnet receipts and historical policy state from the FastNear archive. It needs internet access and Bun. It needs no wallet, invite code, API key, or dependency install.
+
+- **0.25 NEAR CLI replay.** Check policy activation, the agent grant, the rejected payment, and the approved supplier payment. Follow the separate simulated loss through claim filing, two matching reviewer votes, and the transfer to the registered recovery account.
+- **0.18 NEAR historical payout.** Check the reserve deposit and original checkout. Compare the loss block with the block that made the 0.42 NEAR limit effective. The two reviewers approved the earlier loss, and the reserve transferred 0.18 NEAR to the registered recovery account.
+
+Each check prints `PASS` after it verifies the chain data. The command waits and retries if the public RPC rate limits a request. If an RPC error persists or the data does not match, it prints `FAIL` and exits with a nonzero status. To use another testnet archival RPC that returns receipts and historical contract state, set `AGSURANCE_TESTNET_RPC`.
+
+[Connect Wallet on testnet](https://agsurance.vercel.app/demo#manual-demo) · [Open the 0.25 NEAR CLI replay](https://agsurance.vercel.app/demo#cli-run) · [Inspect the 0.18 NEAR historical payout](https://agsurance.vercel.app/demo#historical-limit)
 
 ## Verify the 0.25 NEAR CLI replay
 
