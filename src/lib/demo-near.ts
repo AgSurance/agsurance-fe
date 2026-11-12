@@ -24,11 +24,11 @@ export type DemoAccounts = {
   pool?: string;
 };
 
-export async function rpc<T>(method: string, params: object): Promise<T> {
+export async function rpc<T>(method: string, params: object, signal = AbortSignal.timeout(45000)): Promise<T> {
   const response = await fetch(testnetRpc, {
     method: "POST", headers: { "content-type": "application/json" }, cache: "no-store",
     body: JSON.stringify({ jsonrpc: "2.0", id: "agsurance-demo", method, params }),
-    signal: AbortSignal.timeout(45000),
+    signal,
   });
   const body = await response.json() as { result?: T; error?: { message?: string; cause?: { name?: string } } };
   if (!response.ok || body.result === undefined) {
@@ -37,16 +37,16 @@ export async function rpc<T>(method: string, params: object): Promise<T> {
   return body.result;
 }
 
-async function query<T>(account: string, method: string, args: object, blockHash?: string) {
+async function query<T>(account: string, method: string, args: object, blockHash?: string, signal?: AbortSignal) {
   const result = await rpc<{ result: number[]; block_hash: string; block_height: number }>("query", {
     request_type: "call_function", ...(blockHash ? { block_id: blockHash } : { finality: "final" }), account_id: account,
     method_name: method, args_base64: Buffer.from(JSON.stringify(args)).toString("base64"),
-  });
+  }, signal);
   return { data: JSON.parse(Buffer.from(result.result).toString()) as T, blockHash: result.block_hash, blockHeight: result.block_height };
 }
 
-export async function view<T>(account: string, method: string, args: object = {}, blockHash?: string): Promise<T> {
-  return (await query<T>(account, method, args, blockHash)).data;
+export async function view<T>(account: string, method: string, args: object = {}, blockHash?: string, signal?: AbortSignal): Promise<T> {
+  return (await query<T>(account, method, args, blockHash, signal)).data;
 }
 
 export async function readDashboard(vault: string, walletFallback?: string) {

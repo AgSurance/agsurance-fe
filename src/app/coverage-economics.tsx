@@ -15,6 +15,11 @@ const loss = 30;
 const deductible = 5;
 const payout = Math.min(limit, loss - deductible);
 const near = (hundredths: number) => `${(hundredths / 100).toFixed(2)} NEAR`;
+const claimScenarios = [
+  { count: 0, label: "No claims paid" },
+  { count: 1, label: "One claim paid" },
+  { count: 2, label: "Two claims paid" },
+];
 
 export function CoverageEconomics() {
   const [claims, setClaims] = useState(1);
@@ -39,12 +44,13 @@ export function CoverageEconomics() {
 
       <div className={styles.controls}>
         <fieldset>
-          <legend>Claims paid across two policies</legend>
+          <legend>Choose a payout scenario</legend>
+          <p id="claim-scenario-help">Two example policies. Each approved claim pays {payout} NEAR.</p>
           <div className={styles.options}>
-            {[0, 1, 2].map((count) => (
+            {claimScenarios.map(({ count, label }) => (
               <label key={count}>
-                <input type="radio" name="economics-claims" checked={claims === count} onChange={() => setClaims(count)} />
-                <span>{count}</span>
+                <input type="radio" name="economics-claims" aria-describedby="claim-scenario-help" checked={claims === count} onChange={() => setClaims(count)} />
+                <span><strong>{label}</strong><small>{near(count * payout * 100)} total</small></span>
               </label>
             ))}
           </div>
@@ -70,9 +76,9 @@ export function CoverageEconomics() {
               <span className={styles.light} style={{ flex: rebate }} />
             </div>
             <dl className={styles.rows}>
-              <div><dt><i className={styles.blue} />Capital providers</dt><dd>{near(capitalShare)}</dd></div>
-              <div><dt><i className={styles.pink} />AgSurance operations</dt><dd>{near(operatorShare)}</dd></div>
-              <div><dt><i className={styles.light} />Customer cashback</dt><dd>{near(rebate)}</dd></div>
+              <div><dt><i className={styles.blue} />Capital providers</dt><dd>{near(capitalShare)} · {100 * capitalShare / premium}%</dd></div>
+              <div><dt><i className={styles.pink} />AgSurance operations</dt><dd>{near(operatorShare)} · {100 * operatorShare / premium}%</dd></div>
+              <div><dt><i className={styles.light} />Policyholder cashback</dt><dd>{near(rebate)} · {100 * rebate / premium}%</dd></div>
             </dl>
           </article>
 
@@ -102,7 +108,7 @@ export function CoverageEconomics() {
           </article>
           <article className={`${styles.outcome} ${styles.capital}`}>
             <p className="eyebrow">CAPITAL PROVIDERS</p>
-            <h3>{near(capitalResult)}</h3>
+            <h3>{near(capitalResult)} net result</h3>
             <p>Capital providers receive {near(policies * capitalShare)} from both premiums and pay {near(paid * 100)} in claims. The reserve holds {reserve - paid} NEAR after payouts, before adding any premium income.</p>
             {claims > 0 && <p>Capital providers need <strong>{breakEvenPolicies - claims} policies with no claims</strong> to break even on these payouts. That total can span several 28-day periods.</p>}
           </article>

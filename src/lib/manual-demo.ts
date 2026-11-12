@@ -6,7 +6,7 @@ export type CapitalStatus = {
   capital_raised: string; liquid_surplus: string; liquidity_gap: string; delegation_cap: string;
   sealed: boolean; closed: boolean; validator: string;
   rolling?: boolean; accepting_deposits?: boolean; buffer?: string;
-  pool_equity?: string; claims_paid?: string; premium_income?: string; staking_income?: string;
+  pool_equity?: string; claims_paid?: string; premium_income?: string; staking_income?: string; principal_delegated?: string;
   account_share: { principal_contributed: string; equity?: string } | null;
 };
 

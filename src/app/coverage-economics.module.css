@@ -19,17 +19,19 @@
 
 .controls fieldset { min-width: 0; }
 .controls legend { margin-bottom: 7px; font-weight: 600; }
-.options { display: flex; gap: 6px; }
+.options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .options label { position: relative; }
 .options input { position: absolute; opacity: 0; }
 .options span {
   display: grid;
-  min-width: 44px;
+  min-width: 124px;
   min-height: 44px;
-  place-items: center;
+  align-content: center;
+  padding: 8px 12px;
   border: 1px solid var(--light-line);
   cursor: pointer;
 }
+.options small { font-variant-numeric: tabular-nums; }
 .options input:checked + span { background: var(--color-bubblegum); color: var(--color-deep-blue); font-weight: 700; }
 .options input:focus-visible + span { outline: 2px solid white; outline-offset: 2px; }
 .toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; }
@@ -81,6 +83,11 @@
 
 @media (max-width: 760px) {
   .charts, .outcomes { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .options { display: grid; }
+  .options span { grid-template-columns: 1fr auto; gap: 12px; }
 }
 
 .calculator {

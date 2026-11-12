@@ -1,9 +1,12 @@
 import Image from "next/image";
 import Link from "next/link";
+import { Suspense } from "react";
 import { cliPayoutHash, receiptUrl, reserveReplayUrl } from "../lib/demo-links";
 import { hostedDemoEnabled } from "../lib/hosted-demo";
 import { manualDemoContracts } from "../lib/manual-demo";
 import { CoverageEconomics } from "./coverage-economics";
+import { CoverageGuide, LandingFaq, MoneyFlows, Parties } from "./landing-details";
+import { ReserveOverview } from "./reserve-overview";
 
 function ExternalArrow() {
   return (
@@ -51,6 +54,7 @@ export default function Home() {
           <a href="#how-it-works">How it works</a>
           <a href="#coverage">Coverage</a>
           <a href="#economics">Economics</a>
+          <a href="#faq">FAQ</a>
         </nav>
         <Link className="header-link" href="/demo#cli-run">Testnet evidence</Link>
       </header>
@@ -91,16 +95,27 @@ export default function Home() {
           </figure>
         </section>
 
-        <section className="section flow" id="how-it-works" aria-labelledby="flow-title">
-          <h2 id="flow-title">From spending rules to claims</h2>
-          <ol className="features">
-            {features.map(({ title, description }) => (
-              <li key={title}>
-                <h3>{title}</h3>
-                <p>{description}</p>
-              </li>
-            ))}
-          </ol>
+        <section className="section market-statement" aria-labelledby="statement-title">
+          <h2 id="statement-title">Agents can spend.<br />Who pays when the wallet fails?</h2>
+          <ul>
+            <li><strong>Before the loss.</strong> The wallet enforces who the agent can pay and how much it can spend.</li>
+            <li><strong>After a covered loss.</strong> Reviewers check the NEAR receipt. A separate reserve funds the approved payout.</li>
+          </ul>
+        </section>
+
+        <section className="section" id="how-it-works" aria-labelledby="flow-title">
+          <div className="flow">
+            <h2 id="flow-title">From spending rules to claims</h2>
+            <ol className="features">
+              {features.map(({ title, description }) => (
+                <li key={title}>
+                  <h3>{title}</h3>
+                  <p>{description}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <Parties />
         </section>
 
         <section className="section coverage" id="coverage" aria-labelledby="coverage-title">
@@ -129,7 +144,19 @@ export default function Home() {
           </article>
         </section>
 
+        <CoverageGuide />
+
+        <section className="section landing-reserve" id="reserve" aria-labelledby="reserve-title">
+          <p className="eyebrow">NEAR TESTNET</p>
+          <h2 id="reserve-title">The claims reserve</h2>
+          <Suspense fallback={<p role="status">Reading reserve figures from NEAR testnet…</p>}>
+            <ReserveOverview />
+          </Suspense>
+          <MoneyFlows />
+        </section>
+
         <CoverageEconomics />
+        <LandingFaq />
       </main>
 
       <footer className="site-footer">
