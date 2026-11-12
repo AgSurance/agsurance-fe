@@ -60,11 +60,6 @@
 .demo-mandate input[aria-invalid="true"] { border-color: var(--color-deep-blue); }
 .demo-field-error { font-weight: 600; }
 .demo-mandate button { width: fit-content; }
-.demo-invite .demo-mandate { max-width: 28rem; }
-.demo-invite .demo-mandate input { min-height: 44px; }
-.demo-invite { margin-bottom: 16px; }
-#invite-error { color: var(--ink); font-weight: 600; }
-
 #live-demo, #cli-run, #historical-limit, #duplicate-invoice { scroll-margin-top: 16px; }
 .demo-run { margin-bottom: 16px; }
 .demo-run h2 { font-size: clamp(2rem, 4vw, 3.25rem); }
