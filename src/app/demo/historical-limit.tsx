@@ -1,4 +1,4 @@
-import { receiptUrl } from "../../lib/demo-links";
+import { historicalPayoutHash, receiptUrl } from "../../lib/demo-links";
 
 const increaseHash = "CL3ko61db2p4Mw2tZaLEaj9hPWLaXZpW3tipt7CyrkNV";
 
@@ -30,7 +30,7 @@ export function HistoricalLimit() {
             <a className="demo-proof" href={receiptUrl("J4nvLf47vmy5rfwf2aB1nU2TYXeQ68cK5d5qEGyuqeD6")}>Claim filing</a>
             <a className="demo-proof" href={receiptUrl("AixCayE4YVQJmZHGyg66rgNLEf65574qabX2bYZE8HrK")}>Reviewer 1</a>
             <a className="demo-proof" href={receiptUrl("8X9joNTVEjpzZs5Vnc3XNb4g7umoEKPBFmu3gPeQGs5t")}>Reviewer 2</a>
-            <a className="demo-proof" href={receiptUrl("7bNezR6hT22Bm2MCeSPc59BC2ehBaYSExTQdqn98MRYP")}>0.18 NEAR payout receipt</a>
+            <a className="demo-proof" href={receiptUrl(historicalPayoutHash)}>0.18 NEAR payout receipt</a>
           </div>
         </li>
       </ol>

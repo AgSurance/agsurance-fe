@@ -1,10 +1,16 @@
 .section {
-  background: #f3f6ff;
+  background: #fff;
   color: var(--ink);
 }
 
 .heading { margin-bottom: clamp(24px, 4vw, 44px); }
-.heading > p:last-child { margin-top: 14px; max-width: 55ch; color: var(--muted); }
+.heading > p { margin-top: 14px; max-width: 70ch; color: var(--muted); }
+.heading > a { display: inline-block; margin-top: 12px; color: var(--color-deep-blue); text-decoration: underline; }
+.example { border-block-start: 1px solid var(--dark-line); background: #faf7fc; padding-inline: clamp(16px, 3vw, 28px); }
+.example:last-child { border-block-end: 1px solid var(--dark-line); }
+.example summary { min-height: 44px; padding-block: 12px; cursor: pointer; color: var(--color-deep-blue); font-weight: 650; }
+.example[open] { padding-bottom: 20px; }
+.example > p:global(.eyebrow) { margin-block: 4px 12px; }
 
 .controls {
   display: flex;
@@ -94,9 +100,10 @@
   display: grid;
   gap: 10px;
   max-width: 44rem;
-  margin: 20px 0 30px;
+  margin: 12px 0 0;
   padding: clamp(16px, 3vw, 24px);
-  border: 1px solid currentColor;
+  border: 1px solid var(--dark-line);
+  background: white;
 }
 .calculator h3 { margin: 0; }
 .calculator input:not([type="checkbox"]),

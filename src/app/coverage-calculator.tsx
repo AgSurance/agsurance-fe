@@ -12,7 +12,7 @@ export function CoverageCalculator() {
 
   return (
     <article className={styles.calculator} aria-labelledby="full-balance-title">
-      <h3 id="full-balance-title">Full-balance coverage calculator</h3>
+      <h3 id="full-balance-title">Full-balance premium estimate</h3>
       <label htmlFor="agent-funding-estimate">Agent wallet balance to cover (NEAR)</label>
       <input id="agent-funding-estimate" inputMode="decimal" maxLength={29} value={balance}
         onChange={event => setBalance(event.target.value)} aria-describedby="estimate-terms" />
@@ -23,12 +23,12 @@ export function CoverageCalculator() {
       <label><input type="checkbox" checked={fundWallet} onChange={event => setFundWallet(event.target.checked)} /> I also need to fund this wallet</label>
       <div aria-live="polite">
         {estimate ? <dl className={styles.rows}>
-          <div><dt>Recommended coverage limit</dt><dd>{formatNear(estimate.limit)}</dd></div>
-          <div><dt>Estimated premium for 28 days</dt><dd>{formatNear(estimate.premium)}</dd></div>
+          <div><dt>Illustrative coverage target</dt><dd>{formatNear(estimate.limit)}</dd></div>
+          <div><dt>Illustrative premium for 28 days</dt><dd>{formatNear(estimate.premium)}</dd></div>
           {fundWallet && <div><dt>Wallet funding plus premium, before gas</dt><dd>{formatNear(estimate.total)}</dd></div>}
         </dl> : <p>Enter a positive NEAR amount.</p>}
       </div>
-      <p id="estimate-terms">Illustrative premiums with no deductible. Testnet checkout shows the price and capacity available on-chain.</p>
+      <p id="estimate-terms">This estimate assumes a zero deductible. Testnet checkout uses current on-chain prices and capacity.</p>
       <details>
         <summary>Pricing assumptions</summary>
         <p>The lower and middle examples assume 0.1% and 0.5% odds of a full claim per 28 days, respectively.

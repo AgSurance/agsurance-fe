@@ -1,12 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Suspense } from "react";
-import { cliPayoutHash, receiptUrl, reserveReplayUrl } from "../lib/demo-links";
-import { hostedDemoEnabled } from "../lib/hosted-demo";
+import { cliPayoutHash, cliReceipts, historicalPayoutHash, receiptUrl } from "../lib/demo-links";
 import { manualDemoContracts } from "../lib/manual-demo";
 import { CoverageEconomics } from "./coverage-economics";
-import { CoverageGuide, LandingFaq, MoneyFlows, Parties } from "./landing-details";
+import { CoverageGuide, LandingFaq, Parties } from "./landing-details";
+import { PaymentGate } from "./landing-motion";
 import { ReserveOverview } from "./reserve-overview";
+
+const payoutTransferUrl = `https://testnet.nearblocks.io/txns/${cliPayoutHash}/execution#CP7xzmJD3ahDQyqixzv5yYCPdbRHmh6oxYH3c2EybtnS`;
 
 function ExternalArrow() {
   return (
@@ -25,24 +27,7 @@ function Brand() {
   );
 }
 
-const features = [
-  {
-    title: "Set spending rules",
-    description: "Add funds to the agent account and buy coverage. Choose who your agent can pay and how much it can spend.",
-  },
-  {
-    title: "Let the agent pay",
-    description: "Your agent can pay the people and services you approve. It can also pay to renew coverage from the same account.",
-  },
-  {
-    title: "File a claim",
-    description: "If a wallet flaw causes a loss, file a claim. Reviewers compare the NEAR transaction receipt with the spending rules in effect at the time.",
-  },
-];
-
 export default function Home() {
-  const hosted = process.env.VERCEL === "1";
-  const showLiveLink = !hosted || hostedDemoEnabled();
   const manualCheckout = !!manualDemoContracts().factory;
 
   return (
@@ -56,7 +41,7 @@ export default function Home() {
           <a href="#economics">Economics</a>
           <a href="#faq">FAQ</a>
         </nav>
-        <Link className="header-link" href="/demo#cli-run">Testnet evidence</Link>
+        <a className="header-link" href="#claim">Testnet evidence</a>
       </header>
       <main id="main-content">
         <section className="hero" aria-labelledby="hero-title">
@@ -64,17 +49,11 @@ export default function Home() {
             <p className="eyebrow">TESTNET PREVIEW</p>
             <h1 id="hero-title">Insurance for<br />AI agents on NEAR.</h1>
             <p className="hero-caption">
-              Give your agent an account with spending rules you set. If a wallet flaw lets funds leave against those rules, you can file a claim.
+              Set spending rules for your agent. If a transfer breaks those rules while coverage is active, submit the NEAR receipt for review.
             </p>
             <div className="hero-actions">
-              <Link className="primary-action" href={manualCheckout ? "/demo#manual-demo" : "/demo#cli-run"}>
-                {manualCheckout ? "Try with your testnet wallet" : "View the verified CLI run"}
-              </Link>
-            </div>
-            <div className="hero-links">
-              {manualCheckout && <Link href="/demo#cli-run">View the verified CLI run</Link>}
-              <a href={reserveReplayUrl}>Replay the shared reserve claim <ExternalArrow /></a>
-              {showLiveLink && <Link href="/demo#live-demo">{hosted ? "Run a demo with an invite" : "Open the local testnet demo"}</Link>}
+              <a className="primary-action" href="#claim">See the 0.25 NEAR payout</a>
+              {manualCheckout && <Link href="/demo#manual-demo">Try with your testnet wallet</Link>}
             </div>
           </div>
           <figure className="hero-figure">
@@ -87,6 +66,7 @@ export default function Home() {
                 sizes="(max-width: 760px) 92vw, (max-width: 1500px) 46vw, 690px"
                 className="hero-image"
               />
+              <span className="hero-signal" aria-hidden="true" />
             </div>
             <figcaption>
               <span><i /> Agent account</span>
@@ -95,67 +75,81 @@ export default function Home() {
           </figure>
         </section>
 
-        <section className="section market-statement" aria-labelledby="statement-title">
-          <h2 id="statement-title">Agents can spend.<br />Who pays when the wallet fails?</h2>
-          <ul>
-            <li><strong>Before the loss.</strong> The wallet enforces who the agent can pay and how much it can spend.</li>
-            <li><strong>After a covered loss.</strong> Reviewers check the NEAR receipt. A separate reserve funds the approved payout.</li>
-          </ul>
+        <section className="section judge-evidence" aria-labelledby="claim-title">
+          <div className="proof-grid" id="claim" tabIndex={-1}>
+            <div>
+              <p className="eyebrow">NEAR TESTNET · PUBLIC RECEIPTS</p>
+              <h2 id="claim-title">0.25 NEAR paid</h2>
+              <p className="proof-copy">One CLI run shows both payment decisions and a claim for a separate simulated loss.</p>
+              <ul className="proof-links">
+                <li><a href={receiptUrl(cliReceipts.declined)}>0.01 NEAR payment blocked <ExternalArrow /></a></li>
+                <li><a href={receiptUrl(cliReceipts.payment)}>0.05 NEAR paid to the approved supplier <ExternalArrow /></a></li>
+                <li><a href={receiptUrl(cliReceipts.claim)}>Claim filed from the CLI <ExternalArrow /></a></li>
+              </ul>
+              <Link className="proof-action" href="/demo#cli-run">Open the full CLI replay</Link>
+            </div>
+            <div className="claim">
+              <dl className="claim-amounts">
+                <div><dt>Simulated loss</dt><dd>0.30 NEAR</dd></div>
+                <div><dt>Deductible</dt><dd>−0.05 NEAR</dd></div>
+                <div className="claim-total"><dt>Paid to the recovery account</dt><dd>0.25 NEAR</dd></div>
+              </dl>
+              <a className="claim-receipt" href={payoutTransferUrl}>
+                <Image
+                  src="/payout-receipt.jpg"
+                  alt=""
+                  width={542}
+                  height={108}
+                  sizes="(max-width: 760px) 82vw, 36vw"
+                />
+                <span>View payout receipt on NearBlocks <ExternalArrow /></span>
+              </a>
+            </div>
+          </div>
+
+          <article className="historical-proof" aria-labelledby="historical-proof-title">
+            <div>
+              <h3 id="historical-proof-title">Why a second claim paid 0.18 NEAR</h3>
+              <p>The policy limit rose to 0.42 NEAR before filing. The reserve paid 0.18 NEAR, the limit in force when the loss occurred.</p>
+            </div>
+            <div className="historical-links">
+              <Link href="/demo#historical-limit">Trace the limit change</Link>
+              <a href={receiptUrl(historicalPayoutHash)}>View the 0.18 NEAR payout <ExternalArrow /></a>
+            </div>
+          </article>
         </section>
 
         <section className="section" id="how-it-works" aria-labelledby="flow-title">
           <div className="flow">
-            <h2 id="flow-title">From spending rules to claims</h2>
-            <ol className="features">
-              {features.map(({ title, description }) => (
-                <li key={title}>
-                  <h3>{title}</h3>
-                  <p>{description}</p>
-                </li>
-              ))}
-            </ol>
+            <div>
+              <h2 id="flow-title">From spending rules to claims</h2>
+              <p className="flow-caption">The wallet checks payments against the spending mandate. Reviewers use that mandate and the finalized NEAR receipt to assess a loss.</p>
+            </div>
+            <PaymentGate />
           </div>
           <Parties />
-        </section>
-
-        <section className="section coverage" id="coverage" aria-labelledby="coverage-title">
-          <div>
-            <p className="eyebrow">COVERAGE</p>
-            <h2 id="coverage-title">When a wallet flaw<br />causes a loss.</h2>
-            <p className="coverage-copy">The proposed policy covers direct losses if a wallet flaw lets funds leave against the recorded spending rules while coverage is active.</p>
-            <p className="coverage-copy">The reserve holds money for claims. Reviewers examine the evidence. If they approve the claim, the reserve pays it.</p>
-          </div>
-
-          <article className="claim" id="claim" aria-labelledby="claim-title">
-            <div className="claim-heading">
-              <p className="eyebrow">VERIFIED CLI RUN</p>
-              <h3 id="claim-title">A payout after a simulated loss</h3>
-            </div>
-            <dl className="claim-amounts">
-              <div><dt>Simulated loss</dt><dd>0.30 NEAR</dd></div>
-              <div><dt>Deductible (your share of the loss)</dt><dd>−0.05 NEAR</dd></div>
-              <div className="claim-total"><dt>Paid to recovery account</dt><dd>0.25 NEAR</dd></div>
-            </dl>
-            <a className="claim-receipt" href={receiptUrl(cliPayoutHash)}>View the payout on NEAR testnet <ExternalArrow /></a>
-            <details>
-              <summary>What did reviewers look at?</summary>
-              <p>Reviewers checked the final NEAR transfer receipt and the spending rules in effect at the time. They also checked whether coverage was active.</p>
-            </details>
-          </article>
         </section>
 
         <CoverageGuide />
 
         <section className="section landing-reserve" id="reserve" aria-labelledby="reserve-title">
-          <p className="eyebrow">NEAR TESTNET</p>
           <h2 id="reserve-title">The claims reserve</h2>
           <Suspense fallback={<p role="status">Reading reserve figures from NEAR testnet…</p>}>
             <ReserveOverview />
           </Suspense>
-          <MoneyFlows />
+          <figure className="reserve-art">
+            <Image
+              src="/reserve-compartments.webp"
+              alt=""
+              width={1200}
+              height={800}
+              sizes="(max-width: 500px) 90vw, 460px"
+            />
+            <figcaption>Reserve structure · Policy allocations, liquidity buffer and surplus eligible for staking</figcaption>
+          </figure>
         </section>
 
-        <CoverageEconomics />
+        <CoverageEconomics showCheckout={manualCheckout} />
         <LandingFaq />
       </main>
 

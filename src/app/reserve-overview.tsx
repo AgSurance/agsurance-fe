@@ -27,16 +27,15 @@ export async function ReserveOverview() {
   ];
 
   return (
-    <>
+    <div className="reserve-snapshot">
+      <p className="eyebrow">LIVE · NEAR TESTNET</p>
+      <p className="reserve-account">Reserve contract <a href={`https://testnet.nearblocks.io/address/${pool}`}>{pool}</a></p>
       <dl className="reserve-figures">
         {figures.map(({ label, amount }) => amount === undefined ? null : (
           <div key={label}><dt>{label}</dt><dd>{formatNear(amount)}</dd></div>
         ))}
       </dl>
-      <p className="landing-note">
-        Figures come from the <a href={`https://testnet.nearblocks.io/address/${pool}`}>public testnet reserve</a>.
-        The contract does not publish aggregate counts of policyholders or capital providers.
-      </p>
-    </>
+      <p className="landing-note">The contract does not publish aggregate counts of policyholders or capital providers.</p>
+    </div>
   );
 }

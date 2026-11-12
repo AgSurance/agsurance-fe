@@ -1,4 +1,4 @@
-import { cliPayoutHash, receiptUrl } from "../../lib/demo-links";
+import { cliPayoutHash, cliReceipts, receiptUrl } from "../../lib/demo-links";
 
 const run = {
   "vault": "vault.agsurance-7910a4d8.testnet",
@@ -9,10 +9,8 @@ const run = {
   "hashes": {
     "checkout": "9z5JCov2sVrZYE3gN9nyE4vBmtHe9KZYiwAZVGzH62pw",
     "connect": "32tQ1gya41MBpNtBWKn6HvPErxp6Acdg9aLMARmauteb",
-    "declined": "FkB8zVFCydDbMhukMQeB6FHBUDb7xGU2qKhrKcZWzyCz",
-    "payment": "9MmWAmKmQWoTUAt9SC4mHbgvsZye4RtMZG5CZz4XDbsx",
+    ...cliReceipts,
     "loss": "4xLhrcrh6uBeQzqF3YdYiamGR4ysBw2GcQRxVwFpuxa5",
-    "claim": "FDhbHXvusRjuPNn4X2d7xcZkhZjAuUQjDvVd1N6bxWji",
     "vote1": "4QQF7JEdqGjDnyySY3co9RKZLMD3bVA8SwhskPz8RD3X",
     "vote2": "8m4Yg68qLei14rVzwwhYEhJ8aSLFyov2E3A7u3Wdp8NH",
     "payout": cliPayoutHash

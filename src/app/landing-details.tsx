@@ -1,112 +1,59 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
+import { ClaimDiagram } from "./landing-motion";
 
-type RoleStep = {
-  role: string;
-  description: string;
-  next?: string;
-  twoWay?: boolean;
-  reserve?: boolean;
-};
+function RoleNode({ title, children, className = "", claimStep }: { title: string; children: ReactNode; className?: string; claimStep?: number }) {
+  return <div className={`role-node ${className}`} data-claim-step={claimStep}><h5>{title}</h5><p>{children}</p></div>;
+}
 
-const roleFlows: { title: string; steps: RoleStep[] }[] = [
-  {
-    title: "Spend within the mandate",
-    steps: [
-      { role: "Policyholder", description: "Funds the agent wallet, pays the premium and sets the supplier and spending limit.", next: "Sets the mandate" },
-      { role: "Agent", description: "Requests payments and renews coverage with a restricted NEAR key.", next: "Wallet pays" },
-      { role: "Supplier", description: "Receives payments the wallet authorizes under the mandate." },
-    ],
-  },
-  {
-    title: "Review and pay a claim",
-    steps: [
-      { role: "Agent", description: "Submits a claim for a loss from the registered wallet.", next: "Files the claim" },
-      { role: "Claim reviewers", description: "Check the NEAR receipt, mandate and paid coverage period.", next: "2 of 3 approve" },
-      { role: "Claims reserve", description: "Funds the approved claim up to the applicable policy limit.", next: "Sends the payout", reserve: true },
-      { role: "Recovery account", description: "Receives the payout at the address registered for the policy." },
-    ],
-  },
-  {
-    title: "Fund the reserve and stake surplus",
-    steps: [
-      { role: "Capital providers", description: "Deposit NEAR for shares. Paid claims can reduce the value of those shares.", next: "Deposit NEAR" },
-      { role: "Claims reserve", description: "The AgSurance operator manages liquidity for claims and delegates eligible surplus.", next: "Stake and rewards", twoWay: true, reserve: true },
-      { role: "NEAR validator", description: "Receives eligible surplus for staking. Realized rewards return to the reserve." },
-    ],
-  },
-];
+function RoleArrow({ children, className = "", claimStep }: { children: string; className?: string; claimStep?: number }) {
+  return <div className={`role-arrow ${className}`} data-claim-step={claimStep}><span>{children}</span><i aria-hidden="true" /></div>;
+}
 
 export function Parties() {
   return (
     <section className="landing-subsection parties" id="roles" aria-labelledby="roles-title">
       <h3 id="roles-title">Who does what</h3>
-      {roleFlows.map(({ title, steps }) => (
-        <div className="role-flow" key={title}>
-          <h4>{title}</h4>
-          <ol role="list">
-            {steps.map(({ role, description, next, twoWay, reserve }) => (
-              <li key={role}>
-                <div className={reserve ? "role-card role-reserve" : "role-card"}>
-                  <strong>{role}</strong>
-                  <p>{description}</p>
-                </div>
-                {next && (
-                  <div className={twoWay ? "role-connector role-two-way" : "role-connector"}>
-                    <span>{next}</span>
-                    <span className="role-arrow" aria-hidden="true" />
-                  </div>
-                )}
-              </li>
-            ))}
-          </ol>
+      <ClaimDiagram>
+        <div className="role-layer role-actors">
+          <h4>Policy &amp; agent</h4>
+          <RoleNode title="Policyholder">Funds the wallet, pays the premium and sets the spending mandate.</RoleNode>
+          <RoleArrow>Sets the mandate</RoleArrow>
+          <RoleNode title="Agent" claimStep={0}>Requests payments, renews coverage and can file a claim with a restricted NEAR key.</RoleNode>
         </div>
-      ))}
+        <RoleArrow className="role-request">Requests payment</RoleArrow>
+        <div className="role-layer role-payments">
+          <h4>Payment controls</h4>
+          <RoleNode title="Vault &amp; agent wallet">Checks who can be paid and enforces the spending limit.</RoleNode>
+          <RoleArrow>Pays</RoleArrow>
+          <RoleNode title="Approved supplier">Receives payments that satisfy the mandate.</RoleNode>
+        </div>
+        <div className="role-claim-wire role-vertical" data-claim-step={1} aria-hidden="true"><span>Files a claim</span><i /></div>
+        <div className="role-layer role-claims">
+          <h4>Claims &amp; settlement</h4>
+          <RoleNode title="Claim reviewers" claimStep={2}>Check the agent’s claim against the NEAR receipt, mandate and paid coverage period.</RoleNode>
+          <RoleArrow claimStep={3}>2 of 3 approve</RoleArrow>
+          <RoleNode title="Claims reserve" className="role-reserve" claimStep={4}>Pays approved claims up to the applicable limit. The AgSurance operator manages its liquidity.</RoleNode>
+          <RoleArrow claimStep={5}>Sends payout</RoleArrow>
+          <RoleNode title="Recovery account" claimStep={6}>Receives the payout at the registered address.</RoleNode>
+        </div>
+        <div className="role-capital-wire" aria-hidden="true"><span>Deposits NEAR</span><i /></div>
+        <div className="role-staking-wire role-vertical" aria-hidden="true"><span>Surplus ↓ · rewards ↑</span><i /></div>
+        <div className="role-layer role-capital">
+          <h4>Capital &amp; staking</h4>
+          <RoleNode title="Capital providers">Deposit NEAR into the claims reserve for shares. Paid claims can reduce share value.</RoleNode>
+          <RoleNode title="NEAR validator">Receives eligible surplus for staking and returns realized rewards to the reserve.</RoleNode>
+        </div>
+      </ClaimDiagram>
     </section>
-  );
-}
-
-const flows = [
-  {
-    title: "Policyholder",
-    steps: [
-      ["Fund the wallet", "Operating NEAR stays in the agent wallet for approved payments."],
-      ["Pay the premium", "The vault collects the premium for the paid coverage period."],
-      ["Receive an approved payout", "The reserve sends it to the registered recovery account."],
-    ],
-  },
-  {
-    title: "Capital provider",
-    steps: [
-      ["Deposit NEAR", "The reserve issues shares at the pool’s current value."],
-      ["Set aside liquid funds", "Policy allocations and the buffer take priority. Claim payouts reduce reserve assets."],
-      ["Delegate eligible surplus", "The pool can stake surplus with a NEAR validator up to its configured cap. Realized rewards return to the pool and accrue to providers by share."],
-    ],
-  },
-];
-
-export function MoneyFlows() {
-  return (
-    <div className="landing-subsection">
-      <h3>Two paths for NEAR</h3>
-      <div className="landing-columns">
-        {flows.map(({ title, steps }) => (
-          <div className="money-path" key={title}>
-            <h4>{title}</h4>
-            <ol>
-              {steps.map(([label, detail]) => <li key={label}><strong>{label}</strong><p>{detail}</p></li>)}
-            </ol>
-          </div>
-        ))}
-      </div>
-      <p className="landing-note">The pilot pays 20% cashback on earned premium if the full term was paid without a coverage gap and the wallet has not been retired. Providers receive 70% of the remainder and the operator receives 30%. These percentages divide premium revenue. Provider returns depend on claims, actual staking rewards and costs.</p>
-    </div>
   );
 }
 
 export function CoverageGuide() {
   return (
-    <section className="section landing-guide" id="incidents" aria-labelledby="incident-title">
-      <h2 id="incident-title">What the policy covers</h2>
+    <section className="section landing-guide" id="coverage" aria-labelledby="coverage-title">
+      <h2 id="coverage-title">What the policy covers</h2>
+      <p className="landing-note">The spending limit controls what the agent can pay. The payout limit caps an approved claim at the policy limit in force when the loss happened.</p>
       <div className="landing-columns">
         <div>
           <h3>Eligible for review</h3>
@@ -125,42 +72,22 @@ export function CoverageGuide() {
           </ul>
         </div>
       </div>
-      <div className="landing-subsection">
+      <div className="landing-subsection" id="incidents">
         <h3>What if the wallet had an AgSurance policy?</h3>
-        <div className="incident-list">
-          <article>
-            <h4>Ledger Connect Kit, December 2023</h4>
-            <p>Compromised code in a wallet connection library affected users of third-party apps. An affected personal wallet would fall outside this pilot. In an analogous case, a final NEAR transfer from an enrolled agent wallet to a recipient outside its mandate during paid coverage could be reviewed.</p>
-            <a href="https://www.ledger.com/blog/a-letter-from-ledger-chairman-ceo-pascal-gauthier-regarding-ledger-connect-kit-exploit">Ledger’s incident report</a>
-          </article>
-          <article>
-            <h4>Ronin bridge, March 2022</h4>
-            <p>Funds were drained from the bridge. A policy on a NEAR agent wallet would leave this loss outside scope because the funds left a bridge rather than the enrolled agent wallet.</p>
-            <a href="https://blog.roninchain.com/p/the-ronin-bridge-is-open-">Ronin’s incident update</a>
-          </article>
-          <article>
-            <h4>Slope wallets, August 2022</h4>
-            <p>Compromised private keys were used to drain wallets on Solana. Those wallet losses fall outside the pilot. On AgSurance, an agent key is restricted to specific vault methods, and a claim would still require a qualifying final transfer from the registered NEAR wallet.</p>
-            <a href="https://solana.com/news/8-2-2022-application-wallet-incident">Solana Foundation’s incident update</a>
-          </article>
-          <article>
-            <h4>AgSurance’s NEAR testnet run</h4>
-            <p>After a separate simulated loss of 0.30 NEAR, two reviewers approved the claim and the reserve paid 0.25 NEAR after the deductible.</p>
-            <Link href="/demo#cli-run">Open the replay and receipts</Link>
-          </article>
-        </div>
+        <article className="incident-example">
+          <h4>Ledger Connect Kit, December 2023</h4>
+          <p>Compromised wallet connection code affected users of third-party apps. This pilot excludes personal wallet losses. A similar incident on an enrolled NEAR agent wallet could be reviewed if a final transfer breached its spending mandate during paid coverage.</p>
+          <a href="https://www.ledger.com/blog/a-letter-from-ledger-chairman-ceo-pascal-gauthier-regarding-ledger-connect-kit-exploit">Ledger’s incident report</a>
+        </article>
       </div>
     </section>
   );
 }
 
 const questions = [
-  ["Who can spend the wallet balance?", "The agent’s restricted NEAR key can request payments through the vault. The wallet enforces the approved supplier and cumulative spending limit. The owner can revoke the agent’s access."],
-  ["How much can a claim pay?", "An approved payout uses the eligible loss after recoveries and the deductible, capped by the policy limit in force when the loss occurred."],
-  ["Does a blocked payment qualify for reimbursement?", "A blocked payment leaves no funds lost. A claim requires a finalized transfer from the registered wallet and evidence that it breached the policy’s mandate."],
-  ["Can capital providers lose principal?", "Yes. Approved claims are paid from the reserve. The value of a share reflects those payouts as well as the provider’s share of earned premiums and realized staking rewards."],
-  ["Does the reserve stake all deposited NEAR?", "Only eligible surplus can be delegated, after claim allocations and the buffer and subject to a configured cap. Unstaking takes time, so delegated funds are separate from liquid reserve assets."],
-  ["Do I need an invite to see a claim?", "The two completed testnet runs and their NEAR receipts are public. The invite is for running a new demo with a funded account."],
+  ["How much could I recover?", "An approved payout uses the eligible loss after recoveries and the deductible, capped by the policy limit in force when the loss occurred."],
+  ["What evidence do I need for a claim?", "Provide the transaction hash and finalized NEAR transfer receipt. Reviewers check the recipient, amount and whether the policy was active at the time of the loss."],
+  ["Can capital providers lose principal?", "Yes. Approved claims draw from the reserve and can reduce the value of its shares. Earned premiums and realized staking rewards can offset losses."],
 ];
 
 export function LandingFaq() {
@@ -173,6 +100,10 @@ export function LandingFaq() {
           <p>{answer}</p>
         </details>
       ))}
+      <details>
+        <summary>How do I see the demo without an invite?</summary>
+        <p>Anyone can open the <Link href="/demo#cli-run">two testnet replays and their public receipts</Link>. An invite gives you access to a funded demo account.</p>
+      </details>
     </section>
   );
 }
