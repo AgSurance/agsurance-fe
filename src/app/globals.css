@@ -246,8 +246,14 @@ h3 { font-size: clamp(1.85rem, 3.1vw, 2.7rem); }
   .role-capital .role-node + .role-node { margin-top: 8px; }
 }
 .landing-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.landing-guide ul { margin-top: 12px; padding-inline-start: 18px; list-style: disc; }
-.landing-guide li + li { margin-top: 6px; }
+.cover-intro { max-width: 64ch; margin-top: 14px; color: var(--muted); font-size: 1rem; }
+.cover-events > section, .cover-terms > section { min-width: 0; padding: clamp(16px, 3vw, 32px); border: 1px solid var(--dark-line); }
+.cover-events > section:first-child { background: #edf3ff; border-top: 3px solid var(--color-deep-blue); }
+.cover-events > section:last-child { background: #fcf1f7; border-top: 3px solid #a31c68; }
+.landing-guide dl { display: grid; gap: 12px; margin-top: 16px; }
+.landing-guide dt { color: var(--color-deep-blue); font-weight: 700; }
+.landing-guide dd { margin-top: 3px; color: var(--muted); }
+.landing-guide dd a { color: var(--color-deep-blue); text-decoration: underline; text-underline-offset: .18em; }
 .incident-example { max-width: 65ch; margin-top: 18px; padding: clamp(14px, 2vw, 24px); border: 1px solid var(--dark-line); background: white; }
 .incident-example h4 { font-weight: 700; font-size: 1.1rem; color: var(--color-deep-blue); }
 .incident-example p { margin: 6px 0; }

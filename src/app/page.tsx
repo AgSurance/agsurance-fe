@@ -49,11 +49,12 @@ export default function Home() {
             <p className="eyebrow">TESTNET PREVIEW</p>
             <h1 id="hero-title">Insurance for<br />AI agents on NEAR.</h1>
             <p className="hero-caption">
-              Set spending rules for your agent. If a transfer breaks those rules while coverage is active, submit the NEAR receipt for review.
+              Set who your agent can pay and how much it can spend. Agent Wallet Cover can reimburse eligible NEAR losses from transfers that break those rules.
             </p>
             <div className="hero-actions">
               <a className="primary-action" href="#claim">See the 0.25 NEAR payout</a>
               {manualCheckout && <Link href="/demo#manual-demo">Try with your testnet wallet</Link>}
+              <a href="#coverage">See what’s covered</a>
             </div>
           </div>
           <figure className="hero-figure">

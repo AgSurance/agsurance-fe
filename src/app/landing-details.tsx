@@ -52,26 +52,84 @@ export function Parties() {
 export function CoverageGuide() {
   return (
     <section className="section landing-guide" id="coverage" aria-labelledby="coverage-title">
-      <h2 id="coverage-title">What the policy covers</h2>
-      <p className="landing-note">The spending limit controls what the agent can pay. The payout limit caps an approved claim at the policy limit in force when the loss happened.</p>
-      <div className="landing-columns">
-        <div>
-          <h3>Eligible for review</h3>
-          <ul>
-            <li>A finalized NEAR transfer from the registered agent wallet to a recipient outside the mandate.</li>
-            <li>A finalized transfer from that wallet that exceeds the recorded spending limit.</li>
-            <li>The loss must occur during paid coverage. Reviewers confirm the evidence and eligible loss must exceed the deductible.</li>
-          </ul>
-        </div>
-        <div>
-          <h3>Outside this policy</h3>
-          <ul>
-            <li>A blocked payment, with no loss to reimburse.</li>
-            <li>A duplicate invoice or bad purchase paid to the approved supplier within the mandate.</li>
-            <li>Funds lost from a personal wallet, a third-party bridge or a different chain. Token price losses are also outside scope.</li>
-          </ul>
-        </div>
+      <p className="eyebrow">TESTNET COVER</p>
+      <h2 id="coverage-title">Agent Wallet Cover</h2>
+      <p className="cover-intro">Covers eligible NEAR losses when funds leave your registered agent wallet in a transfer that breaks its spending rules during paid coverage.</p>
+
+      <div className="landing-columns cover-events">
+        <section aria-labelledby="covered-events-title">
+          <h3 id="covered-events-title">What it covers</h3>
+          <dl>
+            <div>
+              <dt>Unapproved recipient</dt>
+              <dd>NEAR reaches a recipient other than the supplier named in the policy.</dd>
+            </div>
+            <div>
+              <dt>Transfer above the spending limit</dt>
+              <dd>NEAR reaches the approved supplier in a single transfer larger than the amount allowed by the policy’s spending rules.</dd>
+            </div>
+          </dl>
+        </section>
+        <section aria-labelledby="cover-exclusions-title">
+          <h3 id="cover-exclusions-title">What it excludes</h3>
+          <dl>
+            <div>
+              <dt>Blocked or failed payments</dt>
+              <dd>The attempted transfer leaves no eligible loss.</dd>
+            </div>
+            <div>
+              <dt>Bad purchases within the rules</dt>
+              <dd>A duplicate invoice or unwanted purchase paid to the approved supplier within the limit. <a href="/demo#duplicate-invoice">See the duplicate invoice example.</a></dd>
+            </div>
+            <div>
+              <dt>Other assets, wallets and market losses</dt>
+              <dd>Tokens other than native NEAR, losses from personal wallets or bridges, losses on other chains, and price drops.</dd>
+            </div>
+          </dl>
+        </section>
       </div>
+
+      <div className="landing-columns cover-terms">
+        <section aria-labelledby="cover-eligibility-title">
+          <h3 id="cover-eligibility-title">Eligibility</h3>
+          <dl>
+            <div>
+              <dt>Wallet and asset</dt>
+              <dd>The loss must be a finalized native NEAR transfer from the agent wallet registered to the policy on NEAR testnet.</dd>
+            </div>
+            <div>
+              <dt>Coverage at the time of loss</dt>
+              <dd>The transfer must occur during a paid coverage window.</dd>
+            </div>
+            <div>
+              <dt>Proof of loss</dt>
+              <dd>Provide the transaction hash and transfer receipt so reviewers can check the wallet, recipient, amount and block.</dd>
+            </div>
+          </dl>
+        </section>
+        <section aria-labelledby="cover-payout-title">
+          <h3 id="cover-payout-title">Claims and payouts</h3>
+          <dl>
+            <div>
+              <dt>Filing deadline</dt>
+              <dd>Standard testnet policies allow filing for up to 48 hours after the term ends. Use the deadline shown for your policy.</dd>
+            </div>
+            <div>
+              <dt>0.05 NEAR deductible</dt>
+              <dd>Subtract any funds recovered before payout and the deductible from the eligible loss. The result must be positive.</dd>
+            </div>
+            <div>
+              <dt>Payout limit</dt>
+              <dd>The policy limit in force at the loss caps the payout. The spending limit applies to agent payments. <a href="/demo#historical-limit">See the historical limit in action.</a></dd>
+            </div>
+            <div>
+              <dt>Approval and payment</dt>
+              <dd>Two of three reviewers must approve the evidence. The reserve sends the approved payout to the registered recovery account.</dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+
       <div className="landing-subsection" id="incidents">
         <h3>What if the wallet had an AgSurance policy?</h3>
         <article className="incident-example">
@@ -85,8 +143,6 @@ export function CoverageGuide() {
 }
 
 const questions = [
-  ["How much could I recover?", "An approved payout uses the eligible loss after recoveries and the deductible, capped by the policy limit in force when the loss occurred."],
-  ["What evidence do I need for a claim?", "Provide the transaction hash and finalized NEAR transfer receipt. Reviewers check the recipient, amount and whether the policy was active at the time of the loss."],
   ["Can capital providers lose principal?", "Yes. Approved claims draw from the reserve and can reduce the value of its shares. Earned premiums and realized staking rewards can offset losses."],
 ];
 
