@@ -2,6 +2,8 @@
 
 AgSurance gives AI agents a payment account with loss coverage on NEAR testnet. The owner chooses a supplier and sets a spending limit. The agent can pay that supplier from its own runtime. If the demo records a loss, reviewers examine the transfer before a separate reserve pays the claim.
 
+The team's other NEAR HACKATHON project is [Glimpsea](https://github.com/Glimpsea/glimpsea-fe), an independent entry.
+
 [Open the live demo](https://agsurance.vercel.app/demo) · [Verify both testnet claims](#verify-both-testnet-claims) · [Run the Sandbox checks](#verify-locally) · [Read the Rust contracts](https://github.com/AgSurance/agsurance-sc)
 
 ## Verify both testnet claims
